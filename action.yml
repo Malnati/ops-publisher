@@ -38,6 +38,10 @@ inputs:
     description: "Email do bot."
     required: false
     default: "git-report-ops@users.noreply.github.com"
+  pr_template_path:
+    description: "Caminho para um template Markdown customizado para o corpo da PR."
+    required: false
+    default: ""
 
 outputs:
   pr_url:
@@ -394,8 +398,9 @@ runs:
         fi
         
         echo "::endgroup::"
-# ==================================================================
-    # BLOCK 4: PUBLISH (Split)
+        
+    # ==================================================================
+    # BLOCK 4: PUBLISH (Refatorado: Template-Based)
     # ==================================================================
 
     # 4.0 - Operações Git (Branch & Push)
@@ -411,60 +416,64 @@ runs:
         set -euo pipefail
         
         REPORT_BRANCH="${PREFIX}/${HEAD_REF}"
-        echo "Target Branch: $REPORT_BRANCH"
         
-        # Garante que estamos na origem limpa
+        # Garante checkout limpo da origem
         git checkout "$HEAD_REF"
-        
-        # Cria ou reseta a branch de relatório
+        # Cria/Reseta branch de relatório
         git checkout -B "$REPORT_BRANCH"
         
-        # Adiciona o arquivo (que já foi modificado com metadados no step 3.1)
         git add "$REPORT"
-        
-        # Commit com skip ci para evitar loops via push
         git commit -m "docs: automated report update [skip ci]"
-        
-        # Push forçado para garantir que a branch remota fique igual à local
         git push -f origin "$REPORT_BRANCH"
         
         echo "branch=$REPORT_BRANCH" >> "$GITHUB_OUTPUT"
         echo "::endgroup::"
 
-    # 4.1 - Construção do Corpo da PR (Template)
+    # 4.1 - Construção do Corpo da PR (Envsubst)
+    # Substitui o Heredoc por processamento de arquivo de template
     - id: build_body
       if: steps.circuit_breaker.outputs.skip != 'true' && steps.analyze_search.outputs.skip != 'true'
       shell: bash
       env:
+        # Variáveis para substituição
         PR_NUM: ${{ github.event.pull_request.number }}
         HEAD_REF: ${{ github.head_ref }}
         HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         SIGNATURE: ${{ env.CODE_SIGNATURE }}
         USER_BODY: ${{ inputs.pr_body }}
+        # Configuração de Template
+        CUSTOM_TEMPLATE: ${{ inputs.pr_template_path }}
+        DEFAULT_TEMPLATE: ${{ github.action_path }}/templates/pr-body-default.md
       run: |
-        echo "::group::📝 PR: Building Description"
+        echo "::group::📝 PR: Building Description from Template"
+        set -euo pipefail
         
         BODY_FILE="/tmp/pr_description.md"
-        DATE=$(date -u)
+        export DATE=$(date -u)
         
-        # Construção segura do arquivo via Heredoc sem expansão de variáveis indesejadas
-        cat <<EOF > "$BODY_FILE"
-        $USER_BODY
-
-        ---
-        ### 🛡️ Metadados de Rastreabilidade
-        > Esta PR contém artefatos gerados automaticamente para a revisão da PR original.
-
-        | 🏷️ Chave | ℹ️ Valor |
-        | :--- | :--- |
-        | **PR Origem** | #$PR_NUM (\`$HEAD_REF\`) |
-        | **Commit Base** | \`$HEAD_SHA\` |
-        | **Assinatura** | \`$SIGNATURE\` |
-        | **Data (UTC)** | $DATE |
-
-        EOF
+        # 1. Seleção do Template
+        if [[ -n "$CUSTOM_TEMPLATE" && -f "$CUSTOM_TEMPLATE" ]]; then
+           echo "📄 Using custom template: $CUSTOM_TEMPLATE"
+           TEMPLATE_SOURCE="$CUSTOM_TEMPLATE"
+        else
+           echo "📄 Using default template."
+           if [ ! -f "$DEFAULT_TEMPLATE" ]; then
+              echo "❌ Critical: Default template not found at $DEFAULT_TEMPLATE"
+              exit 1
+           fi
+           TEMPLATE_SOURCE="$DEFAULT_TEMPLATE"
+        fi
         
-        echo "Body file generated at $BODY_FILE"
+        # 2. Processamento (Substituição de Variáveis)
+        # envsubst substitui $VAR pelo valor da variável de ambiente no arquivo
+        envsubst < "$TEMPLATE_SOURCE" > "$BODY_FILE"
+        
+        # 3. Injeção Obrigatória de Assinatura (Hidden)
+        # Isso garante que a lógica de rastreabilidade funcione independente do template do usuário
+        echo "" >> "$BODY_FILE"
+        echo "" >> "$BODY_FILE"
+        
+        echo "✅ Body generated at: $BODY_FILE"
         echo "body_file=$BODY_FILE" >> "$GITHUB_OUTPUT"
         echo "::endgroup::"
 
@@ -482,20 +491,24 @@ runs:
         echo "::group::📡 API: Managing Pull Request"
         set -euo pipefail
         
-        echo "Target: $HEAD_REF <- $REPORT_BRANCH"
-        
-        # 1. Tenta Criar (Falha se já existir, mas o '|| true' permite continuar)
+        # 1. Tenta Criar
         gh pr create \
           --base "$HEAD_REF" \
           --head "$REPORT_BRANCH" \
           --title "$TITLE" \
-          --body-file "$BODY_FILE" || echo "PR creation skipped (likely exists)"
+          --body-file "$BODY_FILE" || echo "⚠️ PR creation skipped (likely exists)."
           
-        # 2. Recupera URL (Seja nova ou existente)
+        # 2. Recupera URL
         PR_URL=$(gh pr view "$REPORT_BRANCH" --json url -q .url)
         
-        # 3. Força atualização do Body (Para atualizar metadados em PRs existentes)
-        gh pr edit "$PR_URL" --body-file "$BODY_FILE" || echo "Failed to edit PR body"
+        if [ -z "$PR_URL" ]; then
+           echo "❌ Failed to retrieve PR URL."
+           exit 1
+        fi
+
+        # 3. Força atualização do Body (Garante metadados novos em PRs antigas)
+        echo "🔄 Updating PR body..."
+        gh pr edit "$PR_URL" --body-file "$BODY_FILE"
         
         echo "✅ PR Link: $PR_URL"
         echo "pr_url=$PR_URL" >> "$GITHUB_OUTPUT"
