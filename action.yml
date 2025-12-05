@@ -1,4 +1,4 @@
-# Malnati/git-report-ops@v1.0.0
+# Malnati/git-report-ops@v1.0.1
 name: "Git Report Ops"
 description: "Publica relatórios em PRs dedicadas com idempotência e proteção de loop."
 author: "Ricardo Malnati"
