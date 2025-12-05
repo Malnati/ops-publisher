@@ -173,7 +173,7 @@ runs:
     # BLOCK 3: IDEMPOTENCY CHECK (Split)
     # ==================================================================
 
-    # 3.0 - Cálculo da Assinatura do Código
+    # 3.0 - Cálculo da Assinatura do Código (Refatorado: Step-by-Step)
     - id: calc_signature
       # Verifica os dois skips do Bloco 2
       if: steps.check_branch.outputs.skip != 'true' && steps.check_author.outputs.skip != 'true'
@@ -183,15 +183,50 @@ runs:
         EXCLUDE: ${{ inputs.scan_exclude }}
       run: |
         echo "::group::🧮 Idempotency: Calculating Signature"
-        
-        # Gera hash baseado apenas nos arquivos de código fonte
-        SIGNATURE=$(git ls-tree -r HEAD --name-only \
-          | grep -E "\.($EXTS)$" \
-          | grep -vE "$EXCLUDE" \
-          | xargs -d '\n' git hash-object 2>/dev/null | md5sum | awk '{print $1}' || echo "empty")
-          
-        echo "CODE_SIGNATURE=$SIGNATURE" >> "$GITHUB_ENV"
+        set -euo pipefail
+
+        # Definição de arquivos temporários
+        ALL_FILES="/tmp/files_all.txt"
+        EXT_MATCHES="/tmp/files_extensions.txt"
+        FINAL_LIST="/tmp/files_final.txt"
+        HASH_LIST="/tmp/object_hashes.txt"
+
+        # 1. Listar todos os arquivos do HEAD
+        echo "📂 1. Listando arquivos do repositório..."
+        git ls-tree -r HEAD --name-only > "$ALL_FILES"
+        COUNT_ALL=$(wc -l < "$ALL_FILES")
+        echo "   -> Total encontrado: $COUNT_ALL arquivos."
+
+        # 2. Filtrar por Extensão
+        # Usa '|| true' para não quebrar o script caso grep não ache nada (exit code 1)
+        echo "🔍 2. Filtrando por extensões: .($EXTS)"
+        grep -E "\.($EXTS)$" "$ALL_FILES" > "$EXT_MATCHES" || true
+        COUNT_EXT=$(wc -l < "$EXT_MATCHES")
+        echo "   -> Arquivos compatíveis: $COUNT_EXT"
+
+        # 3. Remover Exclusões
+        echo "🗑️ 3. Removendo padrões ignorados: $EXCLUDE"
+        grep -vE "$EXCLUDE" "$EXT_MATCHES" > "$FINAL_LIST" || true
+        COUNT_FINAL=$(wc -l < "$FINAL_LIST")
+        echo "   -> Arquivos para assinatura: $COUNT_FINAL"
+
+        # 4. Calcular Hash dos Objetos
+        echo "#️⃣ 4. Gerando hash dos objetos..."
+        if [ -s "$FINAL_LIST" ]; then
+           # xargs: -a (lê arquivo), -d (delimitador newline), -r (não roda se vazio)
+           xargs -a "$FINAL_LIST" -d '\n' -r git hash-object > "$HASH_LIST"
+           
+           # Calcula MD5 da lista de hashes para gerar assinatura única
+           SIGNATURE=$(md5sum "$HASH_LIST" | awk '{print $1}')
+        else
+           echo "   ⚠️ Aviso: Nenhum arquivo restante para cálculo. Assinatura será 'empty'."
+           SIGNATURE="empty"
+        fi
+
         echo "🔑 Content Signature: $SIGNATURE"
+        
+        # Exporta para ENV
+        echo "CODE_SIGNATURE=$SIGNATURE" >> "$GITHUB_ENV"
         echo "::endgroup::"
 
     # 3.1 - Injeção de Metadados no Relatório
