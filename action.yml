@@ -1,6 +1,6 @@
 # Malnati/git-report-ops@v1.1.2
 name: "Git Report Ops"
-description: "Engine GitOps v1.1.1: Fix de newlines e formatação aprimorada da PR."
+description: "Engine GitOps v1.1.2: Modular, com validação passo-a-passo e templates customizáveis."
 author: "Ricardo Malnati"
 
 branding:
@@ -39,7 +39,7 @@ inputs:
     required: false
     default: "git-report-ops@users.noreply.github.com"
   pr_template_path:
-    description: "Caminho para um template Markdown customizado para o corpo da PR."
+    description: "Caminho para um template Markdown customizado."
     required: false
     default: ""
 
@@ -55,7 +55,7 @@ runs:
   using: "composite"
   steps:
     # ==================================================================
-    # BLOCK 1: INITIALIZATION & VALIDATION (Split)
+    # BLOCK 1: INITIALIZATION & VALIDATION
     # ==================================================================
     
     # 1.0 - Validação de Segurança
@@ -67,9 +67,6 @@ runs:
         echo "::group::🔐 Validation: Token"
         if [ -z "$TOKEN" ]; then 
            echo "❌ Error: Input 'token' is missing."
-           echo "   Please provide a valid GitHub Token with permissions:"
-           echo "   - contents: write"
-           echo "   - pull-requests: write"
            exit 1
         fi
         echo "✅ Token present."
@@ -84,10 +81,9 @@ runs:
         echo "::group::📄 Validation: Report File"
         if [ ! -f "$REPORT" ]; then 
            echo "❌ Error: Report file not found at: '$REPORT'"
-           echo "   Make sure the previous step generated the artifact correctly."
            exit 1
         fi
-        echo "✅ Report file found: $REPORT"
+        echo "✅ Report file found."
         echo "::endgroup::"
 
     # 1.2 - Configuração de Ambiente Git
@@ -97,18 +93,13 @@ runs:
         BOT_EMAIL: ${{ inputs.bot_email }}
       run: |
         echo "::group::🔧 Git Config: Identity"
-        
-        # Configura identidade para este job
         git config user.name "git-report-ops-bot"
         git config user.email "$BOT_EMAIL"
-        
-        echo "✅ Git identity configured:"
-        echo "   Name:  git-report-ops-bot"
-        echo "   Email: $BOT_EMAIL"
+        echo "✅ Identity configured ($BOT_EMAIL)."
         echo "::endgroup::"
-        
+
     # ==================================================================
-    # BLOCK 2: CIRCUIT BREAKER (Split)
+    # BLOCK 2: CIRCUIT BREAKER (ANTI-LOOP)
     # ==================================================================
 
     # 2.0 - Proteção por Nome da Branch
@@ -118,22 +109,18 @@ runs:
         HEAD_REF: ${{ github.head_ref }}
         PREFIX: ${{ inputs.report_branch_prefix }}
       run: |
-        echo "::group::🛡️ Anti-Loop: Branch Name Check"
-        echo "Target Branch: $HEAD_REF"
-        echo "Report Prefix: $PREFIX"
-        
+        echo "::group::🛡️ Anti-Loop: Branch Name"
         if [[ "$HEAD_REF" == "$PREFIX"* ]]; then
-           echo "🛑 Loop Detected: Running inside a report branch."
+           echo "🛑 Loop Detected: Inside report branch."
            echo "skip=true" >> "$GITHUB_OUTPUT"
            echo "reason=SKIPPED_LOOP" >> "$GITHUB_OUTPUT"
         else
-           echo "✅ Branch check passed."
+           echo "✅ Branch OK."
            echo "skip=false" >> "$GITHUB_OUTPUT"
         fi
         echo "::endgroup::"
 
     # 2.1 - Preparação do Histórico (Fetch)
-    # Só roda se o passo anterior não bloqueou
     - id: fetch_history
       if: steps.check_branch.outputs.skip != 'true'
       shell: bash
@@ -142,44 +129,39 @@ runs:
       run: |
         echo "::group::📚 Git History: Fetching Context"
         if [ -f .git/shallow ]; then
-           echo "⚙️ Shallow repo detected. Fetching depth 1 for author check..."
+           echo "⚙️ Shallow repo detected. Unshallowing..."
            git fetch --depth=1 origin "$HEAD_REF" 2>/dev/null || true
-        else
-           echo "✅ Full history available."
         fi
+        echo "✅ Context fetched."
         echo "::endgroup::"
 
     # 2.2 - Proteção por Autor do Commit
-    # Só roda se o passo 2.0 não bloqueou
     - id: check_author
       if: steps.check_branch.outputs.skip != 'true'
       shell: bash
       env:
         BOT_EMAIL: ${{ inputs.bot_email }}
       run: |
-        echo "::group::🛡️ Anti-Loop: Commit Author Check"
-        
+        echo "::group::🛡️ Anti-Loop: Commit Author"
         LAST_AUTHOR=$(git log -1 --pretty=format:'%ae')
-        echo "Last Commit Author: $LAST_AUTHOR"
-        echo "Bot Email: $BOT_EMAIL"
-
+        
         if [[ "$LAST_AUTHOR" == "$BOT_EMAIL" ]]; then
-           echo "🛑 Loop Detected: Last commit was made by the bot."
+           echo "🛑 Loop Detected: Last commit by bot."
            echo "skip=true" >> "$GITHUB_OUTPUT"
            echo "reason=SKIPPED_LOOP" >> "$GITHUB_OUTPUT"
         else
-           echo "✅ Author check passed."
+           echo "✅ Author OK."
            echo "skip=false" >> "$GITHUB_OUTPUT"
         fi
         echo "::endgroup::"
 
     # ==================================================================
-    # BLOCK 3: IDEMPOTENCY CHECK (Split)
+    # BLOCK 3: IDEMPOTENCY CHECK
     # ==================================================================
 
-    # 3.0 - Cálculo da Assinatura do Código (Refatorado: Step-by-Step)
+    # 3.0 - Cálculo da Assinatura
     - id: calc_signature
-      # Verifica os dois skips do Bloco 2
+      # IF: Nem branch nem autor bloquearam
       if: steps.check_branch.outputs.skip != 'true' && steps.check_author.outputs.skip != 'true'
       shell: bash
       env:
@@ -188,52 +170,28 @@ runs:
       run: |
         echo "::group::🧮 Idempotency: Calculating Signature"
         set -euo pipefail
-
-        # Definição de arquivos temporários
+        
         ALL_FILES="/tmp/files_all.txt"
         EXT_MATCHES="/tmp/files_extensions.txt"
         FINAL_LIST="/tmp/files_final.txt"
         HASH_LIST="/tmp/object_hashes.txt"
 
-        # 1. Listar todos os arquivos do HEAD
-        echo "📂 1. Listando arquivos do repositório..."
         git ls-tree -r HEAD --name-only > "$ALL_FILES"
-        COUNT_ALL=$(wc -l < "$ALL_FILES")
-        echo "   -> Total encontrado: $COUNT_ALL arquivos."
-
-        # 2. Filtrar por Extensão
-        # Usa '|| true' para não quebrar o script caso grep não ache nada (exit code 1)
-        echo "🔍 2. Filtrando por extensões: .($EXTS)"
         grep -E "\.($EXTS)$" "$ALL_FILES" > "$EXT_MATCHES" || true
-        COUNT_EXT=$(wc -l < "$EXT_MATCHES")
-        echo "   -> Arquivos compatíveis: $COUNT_EXT"
-
-        # 3. Remover Exclusões
-        echo "🗑️ 3. Removendo padrões ignorados: $EXCLUDE"
         grep -vE "$EXCLUDE" "$EXT_MATCHES" > "$FINAL_LIST" || true
-        COUNT_FINAL=$(wc -l < "$FINAL_LIST")
-        echo "   -> Arquivos para assinatura: $COUNT_FINAL"
 
-        # 4. Calcular Hash dos Objetos
-        echo "#️⃣ 4. Gerando hash dos objetos..."
         if [ -s "$FINAL_LIST" ]; then
-           # xargs: -a (lê arquivo), -d (delimitador newline), -r (não roda se vazio)
            xargs -a "$FINAL_LIST" -d '\n' -r git hash-object > "$HASH_LIST"
-           
-           # Calcula MD5 da lista de hashes para gerar assinatura única
            SIGNATURE=$(md5sum "$HASH_LIST" | awk '{print $1}')
         else
-           echo "   ⚠️ Aviso: Nenhum arquivo restante para cálculo. Assinatura será 'empty'."
            SIGNATURE="empty"
         fi
 
-        echo "🔑 Content Signature: $SIGNATURE"
-        
-        # Exporta para ENV
         echo "CODE_SIGNATURE=$SIGNATURE" >> "$GITHUB_ENV"
+        echo "🔑 Signature: $SIGNATURE"
         echo "::endgroup::"
 
-    # 3.1 - Injeção de Metadados no Relatório
+    # 3.1 - Preparação do Relatório (Injeção de Metadata)
     - id: prep_report
       if: steps.check_branch.outputs.skip != 'true' && steps.check_author.outputs.skip != 'true'
       shell: bash
@@ -243,7 +201,6 @@ runs:
         SIGNATURE: ${{ env.CODE_SIGNATURE }}
       run: |
         echo "::group::📝 Report: Injecting Metadata"
-        
         TEMP="/tmp/meta_report.md"
         echo "" > "$TEMP"
         echo "> **Content Signature:** $SIGNATURE" >> "$TEMP"
@@ -251,235 +208,122 @@ runs:
         echo "> **Data:** $(date -u)" >> "$TEMP"
         echo "" >> "$TEMP"
         cat "$REPORT" >> "$TEMP"
-        
-        # Substitui arquivo original
         mv "$TEMP" "$REPORT"
-        echo "✅ Metadata added to $REPORT"
-        echo "::endgroup::"
-        
-    # 3.2 - Preparação do Histórico Git
-    # Garante que temos o histórico completo para buscar referências antigas
-    - id: fetch_history
-      if: steps.check_branch.outputs.skip != 'true' && steps.check_author.outputs.skip != 'true'
-      shell: bash
-      run: |
-        echo "::group::📚 Idempotency: Fetching History"
-        set -euo pipefail
-
-        if [ -f .git/shallow ]; then 
-           echo "⚙️  Repo is shallow. Unshallowing..."
-           git fetch --unshallow 2>/dev/null || true
-        else
-           echo "✅ Repo is already deep."
-        fi
-
-        echo "🔄 Fetching all refs..."
-        git fetch --all --quiet
+        echo "✅ Metadata added."
         echo "::endgroup::"
 
-    # 3.3 - Execução da Busca (Search Strategy)
-    # Filtra commits do bot e busca a assinatura dentro deles
-    - id: search_history
+    # 3.2 - Busca de Histórico (Idempotência)
+    - id: check_history
       if: steps.check_branch.outputs.skip != 'true' && steps.check_author.outputs.skip != 'true'
       shell: bash
       env:
         SIGNATURE: ${{ env.CODE_SIGNATURE }}
         BOT_EMAIL: ${{ inputs.bot_email }}
       run: |
-        echo "::group::🕵️ Idempotency: Scanning Commits"
+        echo "::group::🕵️ Idempotency: History Search"
         set -euo pipefail
 
-        # Arquivos temporários
-        COMMITS_FILE="/tmp/bot_commits.txt"
-        RESULT_FILE="/tmp/found_ref.txt"
+        if [ -f .git/shallow ]; then git fetch --unshallow 2>/dev/null || true; fi
+        git fetch --all --quiet
         
-        SEARCH_STRING="> **Content Signature:** $SIGNATURE"
-        
-        echo "🔍 1. Filtrando commits do autor: $BOT_EMAIL"
-        # Lista todos os commits (--all) filtrados pelo autor
-        git rev-list --all --author="$BOT_EMAIL" > "$COMMITS_FILE"
-        
-        COMMIT_COUNT=$(wc -l < "$COMMITS_FILE")
-        echo "   -> Encontrados $COMMIT_COUNT commits do bot."
+        SEARCH="> **Content Signature:** $SIGNATURE"
+        FOUND=$(git grep -I -F -l "$SEARCH" $(git rev-list --all --author="$BOT_EMAIL") -- "*.md" 2>/dev/null | head -n 1 || true)
 
-        if [ "$COMMIT_COUNT" -eq "0" ]; then
-           echo "⚪ Nenhum commit anterior do bot para analisar."
-           echo "" > "$RESULT_FILE"
-        else
-           echo "🔍 2. Buscando assinatura nos arquivos Markdown..."
-           echo "   Key: '$SEARCH_STRING'"
-           
-           # Passa a lista de commits para o git grep via xargs
-           # -I: ignora binários, -F: string fixa, -l: apenas nomes de arquivos
-           # || true impede falha se não encontrar nada
-           cat "$COMMITS_FILE" | xargs -r git grep -I -F -l "$SEARCH_STRING" -- "*.md" | head -n 1 > "$RESULT_FILE" || true
-        fi
-        
-        # Debug do resultado
-        if [ -s "$RESULT_FILE" ]; then
-           echo "✅ Encontrado: $(cat "$RESULT_FILE")"
-        else
-           echo "⚪ Nada encontrado."
-        fi
-        
-        echo "::endgroup::"
-
-    # 3.4 - Análise do Resultado e Definição de Outputs
-    - id: analyze_search
-      if: steps.check_branch.outputs.skip != 'true' && steps.check_author.outputs.skip != 'true'
-      shell: bash
-      run: |
-        echo "::group::decission Idempotency: Decision Logic"
-        set -euo pipefail
-        
-        RESULT_FILE="/tmp/found_ref.txt"
-        
-        if [ -s "$RESULT_FILE" ]; then
-           FOUND_REF=$(cat "$RESULT_FILE")
-           
-           echo "✅ Relatório Válido Encontrado: $FOUND_REF"
+        if [ -n "$FOUND" ]; then
+           echo "✅ Match found: $FOUND"
            echo "found=true" >> "$GITHUB_OUTPUT"
            echo "skip=true" >> "$GITHUB_OUTPUT"
            echo "reason=SKIPPED_IDEMPOTENT" >> "$GITHUB_OUTPUT"
-           
-           # Extrai SHA do commit (formato SHA:path/to/file)
-           SHA=$(echo "$FOUND_REF" | cut -d':' -f1)
+           SHA=$(echo "$FOUND" | cut -d':' -f1)
            echo "commit_sha=$SHA" >> "$GITHUB_OUTPUT"
-           echo "   -> Commit SHA extraído: $SHA"
         else
-           echo "📝 Nenhuma correspondência encontrada. O conteúdo é novo."
+           echo "📝 No match found. New content."
            echo "found=false" >> "$GITHUB_OUTPUT"
            echo "skip=false" >> "$GITHUB_OUTPUT"
         fi
         echo "::endgroup::"
 
-    # 3.5 - Recuperação de URL (Apenas se achou histórico)
+    # 3.3 - Recuperação de URL
     - id: recover_url
-      # Nota: 'analyze_search' é o ID do passo 3.4 definido anteriormente
-      if: steps.analyze_search.outputs.found == 'true'
+      # IF: Se a busca histórica achou algo (found=true)
+      if: steps.check_history.outputs.found == 'true'
       shell: bash
       env:
         GH_TOKEN: ${{ inputs.token }}
-        COMMIT_SHA: ${{ steps.analyze_search.outputs.commit_sha }}
+        COMMIT_SHA: ${{ steps.check_history.outputs.commit_sha }}
         PREFIX: ${{ inputs.report_branch_prefix }}
       run: |
-        echo "::group::🔗 Idempotency: Recovering PR URL"
-        set -euo pipefail
-
-        echo "🔍 1. Buscando branches remotas que contém o commit $COMMIT_SHA..."
+        echo "::group::🔗 Idempotency: Recovering URL"
+        TARGET=$(git branch -r --contains "$COMMIT_SHA" | grep "$PREFIX" | head -n 1 | sed 's/^[[:space:]]*origin\///' | xargs || true)
         
-        # Estratégia de Busca:
-        # 1. git branch -r --contains: Lista branches remotas com esse commit
-        # 2. grep "$PREFIX": Filtra apenas as branches de relatório (ex: sentinel/audit/...)
-        # 3. sed: Remove o prefixo 'origin/' para ter o nome limpo da branch
-        
-        TARGET_BRANCH=$(git branch -r --contains "$COMMIT_SHA" \
-          | grep "$PREFIX" \
-          | head -n 1 \
-          | sed 's/^[[:space:]]*origin\///' \
-          | xargs || true)
-
-        if [ -n "$TARGET_BRANCH" ]; then
-           echo "   -> Branch de relatório identificada: $TARGET_BRANCH"
-
-           echo "🔍 2. Consultando API do GitHub por PRs abertas..."
-           # Busca PR associada à branch head encontrada
-           PR_URL=$(gh pr list --head "$TARGET_BRANCH" --state open --json url -q .[0].url || true)
-
-           if [ -n "$PR_URL" ] && [ "$PR_URL" != "null" ]; then
-              echo "✅ URL recuperada com sucesso: $PR_URL"
-              echo "pr_url=$PR_URL" >> "$GITHUB_OUTPUT"
-           else
-              echo "⚠️ Aviso: Branch encontrada, mas não há PR aberta associada."
+        if [ -n "$TARGET" ]; then
+           URL=$(gh pr list --head "$TARGET" --state open --json url -q .[0].url || true)
+           if [ -n "$URL" ] && [ "$URL" != "null" ]; then
+              echo "✅ URL Recovered: $URL"
+              echo "pr_url=$URL" >> "$GITHUB_OUTPUT"
            fi
-        else
-           echo "⚠️ Aviso: Não foi possível rastrear a branch a partir do commit."
-           echo "   Causa provável: A branch de relatório antiga foi deletada, mas o commit persiste (dangling)."
         fi
-        
         echo "::endgroup::"
-        
+
     # ==================================================================
-    # BLOCK 4: PUBLISH (Refatorado: Template-Based)
+    # BLOCK 4: PUBLISH (BRANCH & PR)
     # ==================================================================
 
-    # 4.0 - Operações Git (Branch & Push)
+    # 4.0 - Operações Git
     - id: git_push
-      if: steps.circuit_breaker.outputs.skip != 'true' && steps.analyze_search.outputs.skip != 'true'
+      # IF: Nenhum bloqueio anterior (Circuit 1 & 2 + Idempotency)
+      if: steps.check_branch.outputs.skip != 'true' && steps.check_author.outputs.skip != 'true' && steps.check_history.outputs.skip != 'true'
       shell: bash
       env:
         HEAD_REF: ${{ github.head_ref }}
         PREFIX: ${{ inputs.report_branch_prefix }}
         REPORT: ${{ inputs.report_file }}
       run: |
-        echo "::group::🚀 Git: Pushing Report Branch"
-        set -euo pipefail
-        
+        echo "::group::🚀 Git: Pushing"
         REPORT_BRANCH="${PREFIX}/${HEAD_REF}"
-        
-        # Garante checkout limpo da origem
         git checkout "$HEAD_REF"
-        # Cria/Reseta branch de relatório
         git checkout -B "$REPORT_BRANCH"
-        
         git add "$REPORT"
         git commit -m "docs: automated report update [skip ci]"
         git push -f origin "$REPORT_BRANCH"
-        
         echo "branch=$REPORT_BRANCH" >> "$GITHUB_OUTPUT"
         echo "::endgroup::"
 
-    # 4.1 - Construção do Corpo da PR (Envsubst)
-    # Substitui o Heredoc por processamento de arquivo de template
+    # 4.1 - Construção do Corpo (Template)
     - id: build_body
-      if: steps.circuit_breaker.outputs.skip != 'true' && steps.analyze_search.outputs.skip != 'true'
+      if: steps.check_branch.outputs.skip != 'true' && steps.check_author.outputs.skip != 'true' && steps.check_history.outputs.skip != 'true'
       shell: bash
       env:
-        # Variáveis para substituição
         PR_NUM: ${{ github.event.pull_request.number }}
         HEAD_REF: ${{ github.head_ref }}
         HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         SIGNATURE: ${{ env.CODE_SIGNATURE }}
         USER_BODY: ${{ inputs.pr_body }}
-        # Configuração de Template
         CUSTOM_TEMPLATE: ${{ inputs.pr_template_path }}
         DEFAULT_TEMPLATE: ${{ github.action_path }}/templates/pr-body-default.md
       run: |
-        echo "::group::📝 PR: Building Description from Template"
-        set -euo pipefail
-        
+        echo "::group::📝 PR: Building Body"
         BODY_FILE="/tmp/pr_description.md"
         export DATE=$(date -u)
         
-        # 1. Seleção do Template
         if [[ -n "$CUSTOM_TEMPLATE" && -f "$CUSTOM_TEMPLATE" ]]; then
-           echo "📄 Using custom template: $CUSTOM_TEMPLATE"
            TEMPLATE_SOURCE="$CUSTOM_TEMPLATE"
         else
-           echo "📄 Using default template."
-           if [ ! -f "$DEFAULT_TEMPLATE" ]; then
-              echo "❌ Critical: Default template not found at $DEFAULT_TEMPLATE"
-              exit 1
-           fi
            TEMPLATE_SOURCE="$DEFAULT_TEMPLATE"
         fi
         
-        # 2. Processamento (Substituição de Variáveis)
-        # envsubst substitui $VAR pelo valor da variável de ambiente no arquivo
         envsubst < "$TEMPLATE_SOURCE" > "$BODY_FILE"
         
-        # 3. Injeção Obrigatória de Assinatura (Hidden)
-        # Isso garante que a lógica de rastreabilidade funcione independente do template do usuário
+        # Injeção Obrigatória da Assinatura (CORRIGIDO)
         echo "" >> "$BODY_FILE"
         echo "" >> "$BODY_FILE"
         
-        echo "✅ Body generated at: $BODY_FILE"
         echo "body_file=$BODY_FILE" >> "$GITHUB_OUTPUT"
         echo "::endgroup::"
 
-    # 4.2 - Gerenciamento da PR (Create/Edit)
+    # 4.2 - Gerenciamento da PR
     - id: publish
-      if: steps.circuit_breaker.outputs.skip != 'true' && steps.analyze_search.outputs.skip != 'true'
+      if: steps.check_branch.outputs.skip != 'true' && steps.check_author.outputs.skip != 'true' && steps.check_history.outputs.skip != 'true'
       shell: bash
       env:
         GH_TOKEN: ${{ inputs.token }}
@@ -488,27 +332,16 @@ runs:
         TITLE: ${{ inputs.pr_title }}
         BODY_FILE: ${{ steps.build_body.outputs.body_file }}
       run: |
-        echo "::group::📡 API: Managing Pull Request"
-        set -euo pipefail
+        echo "::group::📡 API: PR Management"
         
-        # 1. Tenta Criar
         gh pr create \
           --base "$HEAD_REF" \
           --head "$REPORT_BRANCH" \
           --title "$TITLE" \
-          --body-file "$BODY_FILE" || echo "⚠️ PR creation skipped (likely exists)."
+          --body-file "$BODY_FILE" || true
           
-        # 2. Recupera URL
         PR_URL=$(gh pr view "$REPORT_BRANCH" --json url -q .url)
-        
-        if [ -z "$PR_URL" ]; then
-           echo "❌ Failed to retrieve PR URL."
-           exit 1
-        fi
-
-        # 3. Força atualização do Body (Garante metadados novos em PRs antigas)
-        echo "🔄 Updating PR body..."
-        gh pr edit "$PR_URL" --body-file "$BODY_FILE"
+        gh pr edit "$PR_URL" --body-file "$BODY_FILE" || true
         
         echo "✅ PR Link: $PR_URL"
         echo "pr_url=$PR_URL" >> "$GITHUB_OUTPUT"
@@ -516,19 +349,33 @@ runs:
         echo "::endgroup::"
 
     # ==================================================================
-    # BLOCK 5: LOGIC CONTROLLER (OUTPUT SUMMARY)
+    # BLOCK 5: CONTROLLER (OUTPUT SUMMARY)
     # ==================================================================
     - id: logic_controller
       shell: bash
       if: always()
       env:
-        S1: ${{ steps.circuit_breaker.outputs.reason }}
-        S2: ${{ steps.idempotency.outputs.reason }}
-        S3: ${{ steps.publish.outputs.status }}
+        # Status dos Circuit Breakers
+        S_BRANCH: ${{ steps.check_branch.outputs.reason }}
+        S_AUTHOR: ${{ steps.check_author.outputs.reason }}
+        # Status de Idempotência
+        S_IDEM: ${{ steps.check_history.outputs.reason }}
+        # Status de Publicação
+        S_PUB: ${{ steps.publish.outputs.status }}
+        # URLs (Recuperada ou Criada)
+        URL_REC: ${{ steps.recover_url.outputs.pr_url }}
+        URL_PUB: ${{ steps.publish.outputs.pr_url }}
       run: |
-        FINAL_STATUS="UNKNOWN"
-        if [ -n "$S3" ]; then FINAL_STATUS="$S3";
-        elif [ -n "$S2" ]; then FINAL_STATUS="$S2";
-        elif [ -n "$S1" ]; then FINAL_STATUS="$S1";
-        fi
+        # Prioridade de Status
+        if [ -n "$S_PUB" ]; then FINAL_STATUS="$S_PUB";
+        elif [ -n "$S_IDEM" ]; then FINAL_STATUS="$S_IDEM";
+        elif [ -n "$S_AUTHOR" ]; then FINAL_STATUS="$S_AUTHOR";
+        elif [ -n "$S_BRANCH" ]; then FINAL_STATUS="$S_BRANCH";
+        else FINAL_STATUS="UNKNOWN"; fi
+        
+        # Prioridade de URL (Se publicou, usa a nova. Se recuperou, usa a antiga)
+        if [ -n "$URL_PUB" ]; then FINAL_URL="$URL_PUB";
+        else FINAL_URL="$URL_REC"; fi
+
         echo "status=$FINAL_STATUS" >> "$GITHUB_OUTPUT"
+        echo "pr_url=$FINAL_URL" >> "$GITHUB_OUTPUT"
