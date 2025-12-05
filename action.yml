@@ -170,30 +170,41 @@ runs:
         echo "::endgroup::"
 
     # ==================================================================
-    # BLOCK 3: IDEMPOTENCY CHECK (SIGNATURE MATCHING)
+    # BLOCK 3: IDEMPOTENCY CHECK (Split)
     # ==================================================================
-    - id: idempotency
-      if: steps.circuit_breaker.outputs.skip != 'true'
+
+    # 3.0 - Cálculo da Assinatura do Código
+    - id: calc_signature
+      # Verifica os dois skips do Bloco 2
+      if: steps.check_branch.outputs.skip != 'true' && steps.check_author.outputs.skip != 'true'
       shell: bash
       env:
         EXTS: ${{ inputs.scan_extensions }}
         EXCLUDE: ${{ inputs.scan_exclude }}
-        HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-        BOT_EMAIL: ${{ inputs.bot_email }}
-        REPORT: ${{ inputs.report_file }}
       run: |
-        echo "::group::🕵️ Idempotency Check"
+        echo "::group::🧮 Idempotency: Calculating Signature"
         
-        # 1. Calcular Assinatura do Código
+        # Gera hash baseado apenas nos arquivos de código fonte
         SIGNATURE=$(git ls-tree -r HEAD --name-only \
           | grep -E "\.($EXTS)$" \
           | grep -vE "$EXCLUDE" \
           | xargs -d '\n' git hash-object 2>/dev/null | md5sum | awk '{print $1}' || echo "empty")
           
         echo "CODE_SIGNATURE=$SIGNATURE" >> "$GITHUB_ENV"
-        echo "🔑 Signature: $SIGNATURE"
+        echo "🔑 Content Signature: $SIGNATURE"
+        echo "::endgroup::"
+
+    # 3.1 - Injeção de Metadados no Relatório
+    - id: prep_report
+      if: steps.check_branch.outputs.skip != 'true' && steps.check_author.outputs.skip != 'true'
+      shell: bash
+      env:
+        REPORT: ${{ inputs.report_file }}
+        HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        SIGNATURE: ${{ env.CODE_SIGNATURE }}
+      run: |
+        echo "::group::📝 Report: Injecting Metadata"
         
-        # 2. Injetar Metadados no Arquivo (Preparação)
         TEMP="/tmp/meta_report.md"
         echo "" > "$TEMP"
         echo "> **Content Signature:** $SIGNATURE" >> "$TEMP"
@@ -201,30 +212,75 @@ runs:
         echo "> **Data:** $(date -u)" >> "$TEMP"
         echo "" >> "$TEMP"
         cat "$REPORT" >> "$TEMP"
+        
+        # Substitui arquivo original
         mv "$TEMP" "$REPORT"
+        echo "✅ Metadata added to $REPORT"
+        echo "::endgroup::"
 
-        # 3. Buscar no Histórico
-        if [ -f .git/shallow ]; then git fetch --unshallow 2>/dev/null || true; fi
+    # 3.2 - Busca de Histórico (Idempotência)
+    - id: check_history
+      if: steps.check_branch.outputs.skip != 'true' && steps.check_author.outputs.skip != 'true'
+      shell: bash
+      env:
+        SIGNATURE: ${{ env.CODE_SIGNATURE }}
+        BOT_EMAIL: ${{ inputs.bot_email }}
+      run: |
+        echo "::group::🕵️ Idempotency: History Search"
+        
+        # Garante histórico para busca
+        if [ -f .git/shallow ]; then 
+           echo "⚙️ Unshallowing repo for deep search..."
+           git fetch --unshallow 2>/dev/null || true
+        fi
         git fetch --all --quiet
         
         SEARCH="> **Content Signature:** $SIGNATURE"
+        echo "🔍 Searching for signature in bot commits..."
+        
         FOUND=$(git grep -I -F -l "$SEARCH" $(git rev-list --all --author="$BOT_EMAIL") -- "*.md" 2>/dev/null | head -n 1 || true)
 
         if [ -n "$FOUND" ]; then
            echo "✅ Idempotent match found: $FOUND"
+           echo "found=true" >> "$GITHUB_OUTPUT"
            echo "skip=true" >> "$GITHUB_OUTPUT"
            echo "reason=SKIPPED_IDEMPOTENT" >> "$GITHUB_OUTPUT"
            
-           # Tentar recuperar URL existente
+           # Extrai SHA do commit onde o arquivo foi achado para o próximo passo
            SHA=$(echo "$FOUND" | cut -d':' -f1)
-           BRANCH=$(git branch -r --contains "$SHA" | grep "origin/ops/" | head -n 1 | sed 's/origin\///' | xargs)
-           if [ -n "$BRANCH" ]; then
-              URL=$(gh pr list --head "$BRANCH" --json url -q .[0].url)
-              [ -n "$URL" ] && echo "pr_url=$URL" >> "$GITHUB_OUTPUT"
+           echo "commit_sha=$SHA" >> "$GITHUB_OUTPUT"
+        else
+           echo "📝 No match found. Content is new."
+           echo "found=false" >> "$GITHUB_OUTPUT"
+           echo "skip=false" >> "$GITHUB_OUTPUT"
+        fi
+        echo "::endgroup::"
+
+    # 3.3 - Recuperação de URL (Apenas se achou histórico)
+    - id: recover_url
+      if: steps.check_history.outputs.found == 'true'
+      shell: bash
+      env:
+        COMMIT_SHA: ${{ steps.check_history.outputs.commit_sha }}
+      run: |
+        echo "::group::🔗 Idempotency: Recovering PR URL"
+        
+        # Tenta achar a branch remota que contem este commit
+        BRANCH=$(git branch -r --contains "$COMMIT_SHA" | grep "origin/ops/" | head -n 1 | sed 's/origin\///' | xargs)
+        
+        if [ -n "$BRANCH" ]; then
+           echo "🔍 Found branch: $BRANCH"
+           # Tenta achar a PR aberta para esta branch
+           URL=$(gh pr list --head "$BRANCH" --json url -q .[0].url)
+           
+           if [ -n "$URL" ]; then
+              echo "✅ Recovered PR URL: $URL"
+              echo "pr_url=$URL" >> "$GITHUB_OUTPUT"
+           else
+              echo "⚠️ Branch found but no open PR detected."
            fi
         else
-           echo "📝 New content detected."
-           echo "skip=false" >> "$GITHUB_OUTPUT"
+           echo "⚠️ Could not resolve branch from commit $COMMIT_SHA."
         fi
         echo "::endgroup::"
 
