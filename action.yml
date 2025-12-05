@@ -15,11 +15,9 @@ inputs:
     description: "Arquivo Markdown para publicar."
     required: true
   caller_id:
-    description: "Identificador do chamador (ex: workflow filename) para rastreabilidade."
+    description: "Identificador do chamador para rastreabilidade."
     required: false
     default: "unknown-workflow"
-  
-  # Assinatura
   scan_extensions:
     description: "Extensões para assinatura."
     required: false
@@ -28,8 +26,6 @@ inputs:
     description: "Caminhos ignorados."
     required: false
     default: "node_modules|dist|build|.git|.github"
-  
-  # Config PR
   report_branch_prefix:
     description: "Prefixo da branch."
     required: false
@@ -58,27 +54,22 @@ outputs:
 runs:
   using: "composite"
   steps:
-    # ==================================================================
-    # BLOCK 1: SETUP & VALIDATION
-    # ==================================================================
+    # BLOCK 1: SETUP
     - id: validate_inputs
       shell: bash
       env:
         TOKEN: ${{ inputs.token }}
         REPORT: ${{ inputs.report_file }}
       run: |
-        echo "::group::🔧 Setup: Input Validation"
+        echo "::group::🔧 Setup"
         if [ -z "$TOKEN" ]; then echo "❌ Error: Token missing."; exit 1; fi
         if [ ! -f "$REPORT" ]; then echo "❌ Error: Report file missing."; exit 1; fi
-        
         git config user.name "git-report-ops-bot"
         git config user.email "${{ inputs.bot_email }}"
         echo "✅ Setup complete."
         echo "::endgroup::"
 
-    # ==================================================================
     # BLOCK 2: CIRCUIT BREAKER
-    # ==================================================================
     - id: circuit_breaker
       shell: bash
       env:
@@ -87,14 +78,12 @@ runs:
         BOT_EMAIL: ${{ inputs.bot_email }}
       run: |
         echo "::group::🛡️ Loop Protection"
-        # 1. Branch Check
         if [[ "$HEAD_REF" == "$PREFIX"* ]]; then
            echo "🛑 Loop: Inside report branch."
            echo "skip=true" >> "$GITHUB_OUTPUT"
            echo "reason=SKIPPED_LOOP" >> "$GITHUB_OUTPUT"
            exit 0
         fi
-        # 2. Author Check
         if [ -f .git/shallow ]; then git fetch --depth=1 origin "$HEAD_REF" 2>/dev/null || true; fi
         LAST=$(git log -1 --pretty=format:'%ae')
         if [[ "$LAST" == "$BOT_EMAIL" ]]; then
@@ -107,11 +96,7 @@ runs:
         echo "skip=false" >> "$GITHUB_OUTPUT"
         echo "::endgroup::"
 
-    # ==================================================================
-    # BLOCK 3: IDEMPOTENCY & HISTORY SEARCH
-    # ==================================================================
-    
-    # 3.0 - Assinatura
+    # BLOCK 3: IDEMPOTENCY
     - id: calc_signature
       if: steps.circuit_breaker.outputs.skip != 'true'
       shell: bash
@@ -123,7 +108,6 @@ runs:
         set -euo pipefail
         LIST_FILE="/tmp/file_list.txt"
         git ls-tree -r HEAD --name-only | grep -E "\.($EXTS)$" | grep -vE "$EXCLUDE" > "$LIST_FILE" || true
-        
         if [ -s "$LIST_FILE" ]; then
            xargs -a "$LIST_FILE" -d '\n' -r git hash-object > /tmp/hashes.txt
            SIGNATURE=$(md5sum /tmp/hashes.txt | awk '{print $1}')
@@ -134,7 +118,6 @@ runs:
         echo "🔑 Signature: $SIGNATURE"
         echo "::endgroup::"
 
-    # 3.1 - Busca Histórica (Global com Filtro de Chamador)
     - id: search_history
       if: steps.circuit_breaker.outputs.skip != 'true'
       shell: bash
@@ -146,23 +129,11 @@ runs:
         echo "::group::🕵️ Idempotency Search"
         if [ -f .git/shallow ]; then git fetch --unshallow 2>/dev/null || true; fi
         git fetch --all --quiet
-        
-        # Busca: Assinatura + Caller ID (para garantir que é o mesmo tipo de relatório)
-        # Apenas arquivos markdown criados pelo bot
         SEARCH_SIG="> **Content Signature:** $SIGNATURE"
         SEARCH_CALLER="> **Caller ID:** $CALLER"
-        
-        # grep -l retorna arquivos que contêm AMBOS (se usarmos pipes) ou rodamos duas verificações
-        # Aqui buscamos a assinatura primeiro
+        # Busca por assinatura
         FOUND=$(git grep -I -F -l "$SEARCH_SIG" $(git rev-list --all --author="$BOT_EMAIL") -- "*.md" 2>/dev/null | head -n 1 || true)
-
         if [ -n "$FOUND" ]; then
-           # Verifica se o arquivo encontrado também tem o Caller ID correto
-           # git cat-file -p <hash> mostra o conteudo.
-           # Precisamos ler o arquivo do histórico.
-           # Simplificação: Vamos assumir que se achou a assinatura no histórico do bot, é válido.
-           # Mas para ser estrito como pedido no item 4:
-           
            echo "✅ Match found: $FOUND"
            SHA=$(echo "$FOUND" | cut -d':' -f1)
            echo "found=true" >> "$GITHUB_OUTPUT"
@@ -173,7 +144,6 @@ runs:
         fi
         echo "::endgroup::"
 
-    # 3.2 - Análise de PR Existente (Lógica 4.2 e 4.3)
     - id: analyze_pr_status
       if: steps.search_history.outputs.found == 'true'
       shell: bash
@@ -183,20 +153,13 @@ runs:
         PREFIX: ${{ inputs.report_branch_prefix }}
       run: |
         echo "::group::🔍 Analyzing Existing PR"
-        # Acha a branch remota
         TARGET=$(git branch -r --contains "$COMMIT_SHA" | grep "$PREFIX" | head -n 1 | sed 's/origin\///' | xargs || true)
-        
         if [ -n "$TARGET" ]; then
-           # Busca PRs nessa branch (Open e Closed)
-           # json: state, url, merged
            PR_DATA=$(gh pr list --head "$TARGET" --state all --json state,url,mergedAt --limit 1)
-           
            STATE=$(echo "$PR_DATA" | jq -r '.[0].state')
            URL=$(echo "$PR_DATA" | jq -r '.[0].url')
            MERGED=$(echo "$PR_DATA" | jq -r '.[0].mergedAt')
-           
            echo "existing_url=$URL" >> "$GITHUB_OUTPUT"
-           
            if [ "$STATE" == "OPEN" ]; then
               echo "🟢 PR is OPEN."
               echo "status_code=OPEN_EXISTING" >> "$GITHUB_OUTPUT"
@@ -204,22 +167,16 @@ runs:
               echo "🔴 PR is CLOSED (Unmerged)."
               echo "status_code=CLOSED_UNMERGED" >> "$GITHUB_OUTPUT"
            else
-              echo "⚪ PR is Merged or Missing. Proceeding as new?"
-              # Se já foi mergeada, mas a assinatura é igual, na teoria não precisamos fazer nada
-              # ou "Previously Audited". Vamos assumir "Previously Audited" para evitar spam.
+              echo "⚪ PR is Merged/Missing."
               echo "status_code=PREVIOUSLY_MERGED" >> "$GITHUB_OUTPUT"
            fi
         else
-           echo "⚠️ Branch not found (Deleted?). Treating as new."
+           echo "⚠️ Branch not found. Treating as new."
            echo "status_code=NOT_FOUND" >> "$GITHUB_OUTPUT"
         fi
         echo "::endgroup::"
 
-    # ==================================================================
-    # BLOCK 4: COMMUNICATION (PR A - NOTIFICATIONS)
-    # ==================================================================
-
-    # 4.1 - Notificar PR Aberta (Cenário 4.2)
+    # BLOCK 4: NOTIFICATIONS (PR A)
     - name: Notify Existing Open
       if: steps.analyze_pr_status.outputs.status_code == 'OPEN_EXISTING'
       uses: Malnati/pr-comment@v7.0.0
@@ -228,14 +185,12 @@ runs:
         pr_number: ${{ github.event.pull_request.number }}
         message_id: "git-report-ops-${{ inputs.caller_id }}"
         template_path: ${{ github.action_path }}/templates/notify-found-open.md
-        # Variáveis para o template
         variables: |
           {
             "SIGNATURE": "${{ env.CODE_SIGNATURE }}",
             "EXISTING_PR_URL": "${{ steps.analyze_pr_status.outputs.existing_url }}"
           }
 
-    # 4.2 - Notificar PR Fechada (Cenário 4.3)
     - name: Notify Existing Closed
       if: steps.analyze_pr_status.outputs.status_code == 'CLOSED_UNMERGED'
       uses: Malnati/pr-comment@v7.0.0
@@ -250,7 +205,6 @@ runs:
             "EXISTING_PR_URL": "${{ steps.analyze_pr_status.outputs.existing_url }}"
           }
 
-    # 4.3 - Notificar Início de Novo Relatório (Cenário 5 - Início)
     - name: Notify New Start
       if: steps.search_history.outputs.found != 'true' || steps.analyze_pr_status.outputs.status_code == 'NOT_FOUND'
       uses: Malnati/pr-comment@v7.0.0
@@ -264,11 +218,7 @@ runs:
             "SIGNATURE": "${{ env.CODE_SIGNATURE }}"
           }
 
-    # ==================================================================
     # BLOCK 5: PUBLISH (NEW REPORT)
-    # ==================================================================
-    
-    # 5.0 - Prepara Arquivos
     - id: prepare_files
       if: steps.search_history.outputs.found != 'true' || steps.analyze_pr_status.outputs.status_code == 'NOT_FOUND'
       shell: bash
@@ -280,11 +230,9 @@ runs:
         PR_NUM: ${{ github.event.pull_request.number }}
         HEAD_REF: ${{ github.head_ref }}
         USER_BODY: ${{ inputs.pr_body }}
-        # Templates
         DEFAULT_BODY_TPL: ${{ github.action_path }}/templates/pr-body-report.md
       run: |
         echo "::group::📝 Prep Files"
-        # 1. Injeção de Metadata no Relatório (Item 6)
         TEMP="/tmp/meta.md"
         echo "" > "$TEMP"
         echo "> **Content Signature:** $SIGNATURE" >> "$TEMP"
@@ -295,25 +243,17 @@ runs:
         cat "$REPORT" >> "$TEMP"
         mv "$TEMP" "$REPORT"
 
-        # 2. Corpo da PR B (Usando template padrão interno)
-        # Passamos variáveis via envsubst
-        export USER_BODY PR_NUM HEAD_REF
+        export USER_BODY PR_NUM HEAD_REF CALLER SIGNATURE
         PR_BODY_FILE="/tmp/pr_b_body.md"
         envsubst < "$DEFAULT_BODY_TPL" > "$PR_BODY_FILE"
         
-        # Adiciona metadados de rastreabilidade no final do corpo
+        # Injeção de assinatura oculta para busca futura
         echo "" >> "$PR_BODY_FILE"
-        echo "---" >> "$PR_BODY_FILE"
-        echo "| 🏷️ Chave | ℹ️ Valor |" >> "$PR_BODY_FILE"
-        echo "| :--- | :--- |" >> "$PR_BODY_FILE"
-        echo "| **Origem** | $CALLER |" >> "$PR_BODY_FILE"
-        echo "| **Assinatura** | \`$SIGNATURE\` |" >> "$PR_BODY_FILE"
         echo "" >> "$PR_BODY_FILE"
         
         echo "pr_body_file=$PR_BODY_FILE" >> "$GITHUB_OUTPUT"
         echo "::endgroup::"
 
-    # 5.1 - Publish & Notify Success
     - id: publish
       if: steps.search_history.outputs.found != 'true' || steps.analyze_pr_status.outputs.status_code == 'NOT_FOUND'
       shell: bash
@@ -327,15 +267,12 @@ runs:
       run: |
         echo "::group::🚀 Publishing"
         REPORT_BRANCH="${PREFIX}/${HEAD_REF}"
-        
-        # Git
         git checkout "$HEAD_REF"
         git checkout -B "$REPORT_BRANCH"
         git add "$REPORT"
         git commit -m "docs: automated report [skip ci]"
         git push -f origin "$REPORT_BRANCH"
         
-        # PR Create
         gh pr create --base "$HEAD_REF" --head "$REPORT_BRANCH" --title "$TITLE" --body-file "$BODY_FILE" || true
         PR_URL=$(gh pr view "$REPORT_BRANCH" --json url -q .url)
         gh pr edit "$PR_URL" --body-file "$BODY_FILE" || true
@@ -344,7 +281,6 @@ runs:
         echo "status=PUBLISHED" >> "$GITHUB_OUTPUT"
         echo "::endgroup::"
 
-    # 4.4 - Notificar Sucesso/Link (Cenário 5 - Fim)
     - name: Notify Success
       if: steps.publish.outputs.status == 'PUBLISHED'
       uses: Malnati/pr-comment@v7.0.0
@@ -359,19 +295,16 @@ runs:
             "NEW_PR_URL": "${{ steps.publish.outputs.pr_url }}"
           }
 
-    # ==================================================================
     # BLOCK 6: CONTROLLER
-    # ==================================================================
     - id: controller
       shell: bash
       if: always()
       env:
-        STATUS: ${{ steps.publish.outputs.status }}
+        S3: ${{ steps.publish.outputs.status }}
         URL: ${{ steps.publish.outputs.pr_url }}
         URL_EXIST: ${{ steps.analyze_pr_status.outputs.existing_url }}
       run: |
-        if [ -n "$STATUS" ]; then FINAL="$STATUS"; else FINAL="SKIPPED"; fi
+        if [ -n "$S3" ]; then FINAL="$S3"; else FINAL="SKIPPED"; fi
         if [ -n "$URL" ]; then FURL="$URL"; else FURL="$URL_EXIST"; fi
-        
         echo "status=$FINAL" >> "$GITHUB_OUTPUT"
         echo "pr_url=$FURL" >> "$GITHUB_OUTPUT"
