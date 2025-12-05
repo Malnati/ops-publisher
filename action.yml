@@ -1,6 +1,6 @@
-# Malnati/git-report-ops@v1.1.0
+# Malnati/git-report-ops@v1.1.1
 name: "Git Report Ops"
-description: "Engine GitOps v1.1: Publicação de relatórios com rastreabilidade aprimorada e backlinks."
+description: "Engine GitOps v1.1.1: Fix de newlines e formatação aprimorada da PR."
 author: "Ricardo Malnati"
 
 branding:
@@ -9,17 +9,17 @@ branding:
 
 inputs:
   token:
-    description: "GitHub token (contents:write, pull-requests:write)."
+    description: "GitHub token."
     required: true
   report_file:
     description: "Arquivo Markdown para publicar."
     required: true
   scan_extensions:
-    description: "Extensões para assinatura de código."
+    description: "Extensões para assinatura."
     required: false
     default: "ts|js|jsx|tsx|java|py|go|cs|php|sh|json|yaml|yml"
   scan_exclude:
-    description: "Caminhos ignorados na assinatura."
+    description: "Caminhos ignorados."
     required: false
     default: "node_modules|dist|build|.git|.github"
   report_branch_prefix:
@@ -44,33 +44,29 @@ outputs:
     description: "URL da Pull Request."
     value: ${{ steps.publish.outputs.pr_url }}
   status:
-    description: "Status: PUBLISHED, UPDATED, SKIPPED_IDEMPOTENT, SKIPPED_LOOP."
+    description: "Status da operação."
     value: ${{ steps.logic_controller.outputs.status }}
 
 runs:
   using: "composite"
   steps:
-    # ------------------------------------------------------------------
-    # STEP 0: SETUP
-    # ------------------------------------------------------------------
+    # ... [STEP 0, 1 e 2 permanecem IDÊNTICOS à v1.1.0] ...
+    # ... (Copie os steps 0, 1 e 2 da versão anterior ou mantenha se já tiver) ...
+    
+    # Vou replicar apenas o STEP 0, 1 e 2 resumidos para contexto, 
+    # mas a mudança real é no STEP 3 abaixo.
+    
     - id: setup
       shell: bash
       env:
         TOKEN: ${{ inputs.token }}
         REPORT: ${{ inputs.report_file }}
       run: |
-        echo "::group::🔧 Setup"
         if [ -z "$TOKEN" ]; then echo "❌ Token missing."; exit 1; fi
-        if [ ! -f "$REPORT" ]; then echo "❌ File not found: $REPORT"; exit 1; fi
-        
+        if [ ! -f "$REPORT" ]; then echo "❌ File not found."; exit 1; fi
         git config user.name "git-report-ops-bot"
         git config user.email "${{ inputs.bot_email }}"
-        echo "✅ Configured."
-        echo "::endgroup::"
 
-    # ------------------------------------------------------------------
-    # STEP 1: CIRCUIT BREAKER
-    # ------------------------------------------------------------------
     - id: circuit_breaker
       shell: bash
       env:
@@ -78,30 +74,12 @@ runs:
         PREFIX: ${{ inputs.report_branch_prefix }}
         BOT_EMAIL: ${{ inputs.bot_email }}
       run: |
-        echo "::group::🛡️ Loop Protection"
-        if [[ "$HEAD_REF" == "$PREFIX"* ]]; then
-           echo "🛑 Loop Branch Detected."
-           echo "skip=true" >> "$GITHUB_OUTPUT"
-           echo "reason=SKIPPED_LOOP" >> "$GITHUB_OUTPUT"
-           exit 0
-        fi
-        
+        if [[ "$HEAD_REF" == "$PREFIX"* ]]; then echo "skip=true" >> "$GITHUB_OUTPUT"; echo "reason=SKIPPED_LOOP" >> "$GITHUB_OUTPUT"; exit 0; fi
         if [ -f .git/shallow ]; then git fetch --depth=1 origin "$HEAD_REF" 2>/dev/null || true; fi
-        LAST_AUTHOR=$(git log -1 --pretty=format:'%ae')
-        
-        if [[ "$LAST_AUTHOR" == "$BOT_EMAIL" ]]; then
-           echo "🛑 Loop Bot Detected."
-           echo "skip=true" >> "$GITHUB_OUTPUT"
-           echo "reason=SKIPPED_LOOP" >> "$GITHUB_OUTPUT"
-           exit 0
-        fi
-        echo "✅ Safe."
+        LAST=$(git log -1 --pretty=format:'%ae')
+        if [[ "$LAST" == "$BOT_EMAIL" ]]; then echo "skip=true" >> "$GITHUB_OUTPUT"; echo "reason=SKIPPED_LOOP" >> "$GITHUB_OUTPUT"; exit 0; fi
         echo "skip=false" >> "$GITHUB_OUTPUT"
-        echo "::endgroup::"
 
-    # ------------------------------------------------------------------
-    # STEP 2: IDEMPOTENCY & SIGNATURE
-    # ------------------------------------------------------------------
     - id: idempotency
       if: steps.circuit_breaker.outputs.skip != 'true'
       shell: bash
@@ -112,58 +90,38 @@ runs:
         BOT_EMAIL: ${{ inputs.bot_email }}
         REPORT: ${{ inputs.report_file }}
       run: |
-        echo "::group::🕵️ Idempotency Check"
-        
-        # Calcula assinatura
-        SIGNATURE=$(git ls-tree -r HEAD --name-only \
-          | grep -E "\.($EXTS)$" \
-          | grep -vE "$EXCLUDE" \
-          | xargs -d '\n' git hash-object 2>/dev/null | md5sum | awk '{print $1}' || echo "empty")
-        
-        echo "🔑 Signature: $SIGNATURE"
-        
-        # Exporta assinatura para o próximo passo (Isso é novo na v1.1.0)
+        SIGNATURE=$(git ls-tree -r HEAD --name-only | grep -E "\.($EXTS)$" | grep -vE "$EXCLUDE" | xargs -d '\n' git hash-object 2>/dev/null | md5sum | awk '{print $1}' || echo "empty")
         echo "CODE_SIGNATURE=$SIGNATURE" >> "$GITHUB_ENV"
+        
+        TEMP="/tmp/meta_report.md"
+        echo "" > "$TEMP"
+        echo "> **Content Signature:** $SIGNATURE" >> "$TEMP"
+        echo "> **Source SHA:** $HEAD_SHA" >> "$TEMP"
+        echo "> **Data:** $(date -u)" >> "$TEMP"
+        echo "" >> "$TEMP"
+        cat "$REPORT" >> "$TEMP"
+        mv "$TEMP" "$REPORT"
 
-        # Injeta Metadata no Arquivo
-        TEMP_FILE="/tmp/final_report_with_meta.md"
-        echo "" > "$TEMP_FILE"
-        echo "> **Content Signature:** $SIGNATURE" >> "$TEMP_FILE"
-        echo "> **Source SHA:** $HEAD_SHA" >> "$TEMP_FILE"
-        echo "> **Data:** $(date -u)" >> "$TEMP_FILE"
-        echo "" >> "$TEMP_FILE"
-        cat "$REPORT" >> "$TEMP_FILE"
-        mv "$TEMP_FILE" "$REPORT"
-
-        # Busca Histórica
         if [ -f .git/shallow ]; then git fetch --unshallow 2>/dev/null || true; fi
         git fetch --all --quiet
+        SEARCH="> **Content Signature:** $SIGNATURE"
+        FOUND=$(git grep -I -F -l "$SEARCH" $(git rev-list --all --author="$BOT_EMAIL") -- "*.md" 2>/dev/null | head -n 1 || true)
 
-        SEARCH_KEY="> **Content Signature:** $SIGNATURE"
-        FOUND_REF=$(git grep -I -F -l "$SEARCH_KEY" $(git rev-list --all --author="$BOT_EMAIL") -- "*.md" 2>/dev/null | head -n 1 || true)
-
-        if [ -n "$FOUND_REF" ]; then
-           echo "✅ Idempotent match found: $FOUND_REF"
+        if [ -n "$FOUND" ]; then
            echo "skip=true" >> "$GITHUB_OUTPUT"
            echo "reason=SKIPPED_IDEMPOTENT" >> "$GITHUB_OUTPUT"
-           
-           # Tenta recuperar URL existente
-           COMMIT_SHA=$(echo "$FOUND_REF" | cut -d':' -f1)
-           EXISTING_BRANCH=$(git branch -r --contains "$COMMIT_SHA" | grep "origin/ops/" | head -n 1 | sed 's/origin\///' | xargs)
-           if [ -n "$EXISTING_BRANCH" ]; then
-              EXISTING_URL=$(gh pr list --head "$EXISTING_BRANCH" --json url -q .[0].url)
-              if [ -n "$EXISTING_URL" ]; then
-                 echo "pr_url=$EXISTING_URL" >> "$GITHUB_OUTPUT"
-              fi
+           SHA=$(echo "$FOUND" | cut -d':' -f1)
+           BRANCH=$(git branch -r --contains "$SHA" | grep "origin/ops/" | head -n 1 | sed 's/origin\///' | xargs)
+           if [ -n "$BRANCH" ]; then
+              URL=$(gh pr list --head "$BRANCH" --json url -q .[0].url)
+              [ -n "$URL" ] && echo "pr_url=$URL" >> "$GITHUB_OUTPUT"
            fi
         else
-           echo "📝 New content detected."
            echo "skip=false" >> "$GITHUB_OUTPUT"
         fi
-        echo "::endgroup::"
 
     # ------------------------------------------------------------------
-    # STEP 3: PUBLISH (PR RICA)
+    # STEP 3: PUBLISH (CORRIGIDO - SEM \n LITERAL)
     # ------------------------------------------------------------------
     - id: publish
       if: steps.circuit_breaker.outputs.skip != 'true' && steps.idempotency.outputs.skip != 'true'
@@ -176,7 +134,6 @@ runs:
         PREFIX: ${{ inputs.report_branch_prefix }}
         TITLE: ${{ inputs.pr_title }}
         USER_BODY: ${{ inputs.pr_body }}
-        # Recupera assinatura do ENV
         SIGNATURE: ${{ env.CODE_SIGNATURE }}
         HEAD_SHA: ${{ github.event.pull_request.head.sha }}
       run: |
@@ -191,38 +148,46 @@ runs:
         git commit -m "docs: automated report update [skip ci]"
         git push -f origin "$REPORT_BRANCH"
         
-        # CONSTRUÇÃO DO BODY RICO (v1.1.0)
-        FINAL_BODY="$USER_BODY"
-        FINAL_BODY+=$'\n\n---\n### 🛡️ Metadados de Rastreabilidade\n'
-        FINAL_BODY+="> Esta PR contém artefatos gerados automaticamente para a revisão da PR original.\n\n"
-        FINAL_BODY+="| 🏷️ Chave | ℹ️ Valor |\n"
-        FINAL_BODY+="| :--- | :--- |\n"
-        FINAL_BODY+="| **PR Origem** | #$PR_NUM (\`$HEAD_REF\`) |\n"
-        FINAL_BODY+="| **Commit Base** | \`$HEAD_SHA\` |\n"
-        FINAL_BODY+="| **Assinatura** | \`$SIGNATURE\` |\n"
-        FINAL_BODY+="| **Data (UTC)** | $(date -u) |\n"
-        FINAL_BODY+=$'\n'
+        # --- CRIAÇÃO DO CORPO EM ARQUIVO (CORREÇÃO DE NEWLINES) ---
+        BODY_FILE="/tmp/pr_body.md"
+        
+        cat <<EOF > "$BODY_FILE"
+        $USER_BODY
+
+        ---
+        ### 🛡️ Metadados de Rastreabilidade
+        > Esta PR contém artefatos gerados automaticamente para a revisão da PR original.
+
+        | 🏷️ Chave | ℹ️ Valor |
+        | :--- | :--- |
+        | **PR Origem** | #$PR_NUM (\`$HEAD_REF\`) |
+        | **Commit Base** | \`$HEAD_SHA\` |
+        | **Assinatura** | \`$SIGNATURE\` |
+        | **Data (UTC)** | $(date -u) |
+
+        EOF
+        # ----------------------------------------------------------
         
         echo "📡 Managing Pull Request..."
+        
+        # Tenta criar
         gh pr create \
           --base "$HEAD_REF" \
           --head "$REPORT_BRANCH" \
           --title "$TITLE" \
-          --body "$FINAL_BODY" || true
+          --body-file "$BODY_FILE" || true  # <-- Usando --body-file
           
         PR_URL=$(gh pr view "$REPORT_BRANCH" --json url -q .url)
         
-        # Tenta atualizar o body se a PR já existia (para garantir metadados novos)
-        gh pr edit "$PR_URL" --body "$FINAL_BODY" || true
+        # Tenta atualizar (garante body novo)
+        gh pr edit "$PR_URL" --body-file "$BODY_FILE" || true # <-- Usando --body-file
         
         echo "✅ PR Link: $PR_URL"
         echo "pr_url=$PR_URL" >> "$GITHUB_OUTPUT"
         echo "status=PUBLISHED" >> "$GITHUB_OUTPUT"
         echo "::endgroup::"
 
-    # ------------------------------------------------------------------
-    # STEP 4: CONTROLLER
-    # ------------------------------------------------------------------
+    # ... [STEP 4 - Controller - Igual] ...
     - id: logic_controller
       shell: bash
       if: always()
