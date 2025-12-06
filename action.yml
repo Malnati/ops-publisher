@@ -98,7 +98,7 @@ runs:
         echo "::endgroup::"
 
     # BLOCK 2: CIRCUIT BREAKER
-    - id: circuit_breaker
+    - id: circuit_breaker_email_check
       shell: bash
       env:
         HEAD_REF: ${{ github.head_ref }}
@@ -132,7 +132,7 @@ runs:
         
         # Lista arquivos
         git ls-tree -r HEAD --name-only | grep -E "\.($EXTS)$" | grep -vE "$EXCLUDE" > "$LIST_FILE" || true
-        
+        SIGNATURE="empty"
         if [ -s "$LIST_FILE" ]; then
            # CORREÇÃO: Hash inclui o nome do arquivo E o conteúdo
            # xargs roda git hash-object para cada arquivo. 
@@ -146,8 +146,6 @@ runs:
            paste "$LIST_FILE" /tmp/content_hashes.txt > /tmp/combined_state.txt
            
            SIGNATURE=$(md5sum /tmp/combined_state.txt | awk '{print $1}')
-        else
-           SIGNATURE="empty"
         fi
         echo "CODE_SIGNATURE=$SIGNATURE" >> "$GITHUB_ENV"
         echo "🔑 Signature: $SIGNATURE"
