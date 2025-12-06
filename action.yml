@@ -188,9 +188,9 @@ runs:
         INPUT_ID: ${{ inputs.notification_id }}
         CALLER: ${{ inputs.caller_id }}
       run: |
-        FINAL_ID="git-report-ops-$CALLER"
-        if [ -n "$INPUT_ID" ]; then
-          FINAL_ID="$INPUT_ID"
+        FINAL_ID="git-report-ops-$CALLER";
+        if [ -n "$INPUT_ID" ]; 
+            then FINAL_ID="$INPUT_ID";       
         fi
         echo "notify_id=$FINAL_ID" >> "$GITHUB_OUTPUT"
         echo "✅ notify_id: $FINAL_ID"
@@ -208,11 +208,9 @@ runs:
            echo "🛑 Loop Branch."
            echo "skip=true" >> "$GITHUB_OUTPUT"
            echo "reason=SKIPPED_LOOP" >> "$GITHUB_OUTPUT"
-           echo "::endgroup::"
            exit 0
         fi
         echo "✅ Prefix Safe."
-        echo "skip=false" >> "$GITHUB_OUTPUT"
         echo "::endgroup::"
 
     # BLOCK 2: CIRCUIT BREAKER
@@ -229,7 +227,6 @@ runs:
            echo "🛑 Loop Bot."
            echo "skip=true" >> "$GITHUB_OUTPUT"
            echo "reason=SKIPPED_LOOP" >> "$GITHUB_OUTPUT"
-           echo "::endgroup::"
            exit 0
         fi
         echo "✅ Email Safe."
@@ -239,7 +236,7 @@ runs:
     # BLOCK 3: IDEMPOTENCY
     # 3.0 - Assinatura (CORRIGIDO PARA RENAMES)
     - id: calc_signature
-      if: steps.circuit_breaker_email_check.outputs.skip != 'true'
+      if: steps.circuit_breaker.outputs.skip != 'true'
       shell: bash
       env:
         EXTS: ${{ inputs.scan_extensions }}
@@ -272,7 +269,7 @@ runs:
 
     # 3.1 - Busca Histórica
     - id: search_history
-      if: steps.circuit_breaker_email_check.outputs.skip != 'true'
+      if: steps.circuit_breaker.outputs.skip != 'true'
       shell: bash
       env:
         SIGNATURE: ${{ env.CODE_SIGNATURE }}
@@ -280,7 +277,7 @@ runs:
       run: |
         echo "::group::🕵️ Idempotency Search"
         if [ -f .git/shallow ]; then 
-          git fetch --unshallow 2>/dev/null || true
+          git fetch --unshallow 2>/dev/null || true; 
         fi
         git fetch --all --quiet
         
@@ -385,14 +382,6 @@ runs:
             "SIGNATURE": "${{ env.CODE_SIGNATURE }}",
             "EXISTING_PR_URL": "${{ steps.analyze_pr_status.outputs.existing_url }}"
           }
-
-    - name: Debug Notify Existing Open
-      if: steps.analyze_pr_status.outputs.status_code == 'OPEN_EXISTING'
-      shell: bash
-      env:
-        SIGNATURE: ${{ env.CODE_SIGNATURE }}
-        EXISTING_PR_URL: ${{ steps.analyze_pr_status.outputs.existing_url }}
-      run: |
         echo "::group::🐛 Debug Notify Existing Open"
         echo "CODE_SIGNATURE: $SIGNATURE passaed to Malnati/pr-comment@v7.0.0"
         echo "existing_url: $EXISTING_PR_URL passaed to Malnati/pr-comment@v7.0.0"
@@ -411,14 +400,6 @@ runs:
             "SIGNATURE": "${{ env.CODE_SIGNATURE }}",
             "EXISTING_PR_URL": "${{ steps.analyze_pr_status.outputs.existing_url }}"
           }
-
-    - name: Debug Notify Existing Closed
-      if: steps.analyze_pr_status.outputs.status_code == 'CLOSED_UNMERGED'
-      shell: bash
-      env:
-        SIGNATURE: ${{ env.CODE_SIGNATURE }}
-        EXISTING_PR_URL: ${{ steps.analyze_pr_status.outputs.existing_url }}
-      run: |
         echo "::group::🐛 Debug Notify Existing Closed"
         echo "CODE_SIGNATURE: $SIGNATURE passaed to Malnati/pr-comment@v7.0.0"
         echo "existing_url: $EXISTING_PR_URL passaed to Malnati/pr-comment@v7.0.0"
@@ -437,13 +418,6 @@ runs:
           {
             "SIGNATURE": "${{ env.CODE_SIGNATURE }}"
           }
-
-    - name: Debug Notify New Start
-      if: steps.search_history.outputs.found == 'false' || steps.analyze_pr_status.outputs.status_code == 'NOT_FOUND'
-      shell: bash
-      env:
-        SIGNATURE: ${{ env.CODE_SIGNATURE }}
-      run: |
         echo "::group::🐛 Debug Notify New Start"
         echo "CODE_SIGNATURE: $SIGNATURE passaed to Malnati/pr-comment@v7.0.0"
         echo "::endgroup::"
@@ -476,7 +450,7 @@ runs:
 
         TEMPLATE_SOURCE="$DEFAULT_TEMPLATE"
         if [[ -n "$CUSTOM_TEMPLATE" && -f "$CUSTOM_TEMPLATE" ]]; then
-           TEMPLATE_SOURCE="$CUSTOM_TEMPLATE"
+           TEMPLATE_SOURCE="$CUSTOM_TEMPLATE"   
         fi
         echo "TEMPLATE_SOURCE: $TEMPLATE_SOURCE"
 
@@ -541,14 +515,6 @@ runs:
             "SIGNATURE": "${{ env.CODE_SIGNATURE }}",
             "NEW_PR_URL": "${{ steps.publish.outputs.pr_url }}"
           }
-
-    - name: Debug Notify Success
-      if: steps.publish.outputs.status == 'PUBLISHED'
-      shell: bash
-      env:
-        SIGNATURE: ${{ env.CODE_SIGNATURE }}
-        NEW_PR_URL: ${{ steps.publish.outputs.pr_url }}
-      run: |
         echo "::group::🐛 Debug Notify Success"
         echo "CODE_SIGNATURE: $SIGNATURE passaed to Malnati/pr-comment@v7.0.0"
         echo "pr_url: $NEW_PR_URL passaed to Malnati/pr-comment@v7.0.0"
