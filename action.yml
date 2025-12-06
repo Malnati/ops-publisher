@@ -249,8 +249,8 @@ runs:
       shell: bash
       run: |
         echo "::group::🐛 Debug Notification Logic"
-        echo "Status Code: ${{ steps.analyze_pr_status.outputs.status_code }}"
-        echo "Found: ${{ steps.search_history.outputs.found }}"
+        echo "status_code: ${{ steps.analyze_pr_status.outputs.status_code }}"
+        echo "found: ${{ steps.search_history.outputs.found }}"
         echo "::endgroup::"
 
     - name: Notify Existing Open
@@ -267,8 +267,8 @@ runs:
             "EXISTING_PR_URL": "${{ steps.analyze_pr_status.outputs.existing_url }}"
           }
         echo "::group::🐛 Debug Notify Existing Open"
-        echo "Status Code: $SIGNATURE passaed to Malnati/pr-comment@v7.0.0"
-        echo "Found: $EXISTING_PR_URL passaed to Malnati/pr-comment@v7.0.0"
+        echo "CODE_SIGNATURE: $SIGNATURE passaed to Malnati/pr-comment@v7.0.0"
+        echo "existing_url: $EXISTING_PR_URL passaed to Malnati/pr-comment@v7.0.0"
         echo "::endgroup::"
 
     - name: Notify Existing Closed
@@ -285,8 +285,8 @@ runs:
             "EXISTING_PR_URL": "${{ steps.analyze_pr_status.outputs.existing_url }}"
           }
         echo "::group::🐛 Debug Notify Existing Closed"
-        echo "Status Code: $SIGNATURE passaed to Malnati/pr-comment@v7.0.0"
-        echo "Found: $EXISTING_PR_URL passaed to Malnati/pr-comment@v7.0.0"
+        echo "CODE_SIGNATURE: $SIGNATURE passaed to Malnati/pr-comment@v7.0.0"
+        echo "existing_url: $EXISTING_PR_URL passaed to Malnati/pr-comment@v7.0.0"
         echo "::endgroup::"
 
     - name: Notify New Start
@@ -303,8 +303,7 @@ runs:
             "SIGNATURE": "${{ env.CODE_SIGNATURE }}"
           }
         echo "::group::🐛 Debug Notify New Start"
-        echo "Status Code: $SIGNATURE passaed to Malnati/pr-comment@v7.0.0"
-        echo "Found: $EXISTING_PR_URL passaed to Malnati/pr-comment@v7.0.0"
+        echo "CODE_SIGNATURE: $SIGNATURE passaed to Malnati/pr-comment@v7.0.0"
         echo "::endgroup::"
 
     # BLOCK 5: PUBLISH
@@ -400,6 +399,10 @@ runs:
             "SIGNATURE": "${{ env.CODE_SIGNATURE }}",
             "NEW_PR_URL": "${{ steps.publish.outputs.pr_url }}"
           }
+        echo "::group::🐛 Debug Notify Success"
+        echo "CODE_SIGNATURE: $SIGNATURE passaed to Malnati/pr-comment@v7.0.0"
+        echo "pr_url: $NEW_PR_URL passaed to Malnati/pr-comment@v7.0.0"
+        echo "::endgroup::"
 
     # BLOCK 6: CONTROLLER
     - id: controller
