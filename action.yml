@@ -197,10 +197,29 @@ runs:
         PREFIX: ${{ inputs.report_branch_prefix }}
       run: |
         echo "::group::🔍 Analyzing Existing PR"
-        TARGET=$(git branch -r --contains "$COMMIT_SHA" | grep "$PREFIX" | head -n 1 | sed 's/origin\///' | xargs || true)
+        BRANCHES=$(git branch -r --contains "$COMMIT_SHA" 2>/dev/null || true)
+        echo "BRANCHES:"
+        echo "$BRANCHES"
+        
+        FILTERED=$(printf '%s\n' "$BRANCHES" | grep "$PREFIX" 2>/dev/null || true)
+        echo "FILTERED:"
+        echo "$FILTERED"
+        
+        FIRST=$(printf '%s\n' "$FILTERED" | head -n 1 || true)
+        echo "FIRST:"
+        echo "$FIRST"
+        
+        STRIPPED=$(printf '%s\n' "$FIRST" | sed 's#origin/##' || true)
+        echo "STRIPPED:"
+        echo "$STRIPPED"
+        
+        TARGET=$(printf '%s\n' "$STRIPPED" | xargs || true)
+        echo "TARGET: $TARGET"
         
         if [ -n "$TARGET" ]; then
            PR_DATA=$(gh pr list --head "$TARGET" --state all --json state,url,mergedAt --limit 1)
+           echo "PR_DATA bruto:"
+           echo "$PR_DATA"
            STATE=$(echo "$PR_DATA" | jq -r '.[0].state')
            URL=$(echo "$PR_DATA" | jq -r '.[0].url')
            MERGED=$(echo "$PR_DATA" | jq -r '.[0].mergedAt')
