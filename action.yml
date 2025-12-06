@@ -160,11 +160,21 @@ runs:
         BOT_EMAIL: ${{ inputs.bot_email }}
       run: |
         echo "::group::🕵️ Idempotency Search"
-        if [ -f .git/shallow ]; then git fetch --unshallow 2>/dev/null || true; fi
+        if [ -f .git/shallow ]; then 
+          git fetch --unshallow 2>/dev/null || true; 
+        fi
         git fetch --all --quiet
         
         SEARCH_SIG="> **Content Signature:** $SIGNATURE"
-        FOUND=$(git grep -I -F -l "$SEARCH_SIG" $(git rev-list --all --author="$BOT_EMAIL") -- "*.md" 2>/dev/null | head -n 1 || true)
+        COMMITS=$(git rev-list --all --author="$BOT_EMAIL" 2>/dev/null || true)
+        echo "COMMITS: $COMMITS"
+        
+        MATCHED_FILES=$(git grep -I -F -l "$SEARCH_SIG" $COMMITS -- "*.md" 2>/dev/null || true)
+        echo "MATCHED_FILES:"
+        echo "$MATCHED_FILES"
+        
+        FOUND=$(printf '%s\n' "$MATCHED_FILES" | head -n 1 || true)
+        echo "FOUND: $FOUND"
 
         if [ -n "$FOUND" ]; then
            echo "✅ Match found: $FOUND"
