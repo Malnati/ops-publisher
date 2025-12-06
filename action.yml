@@ -72,12 +72,30 @@ runs:
         INPUT_ID: ${{ inputs.notification_id }}
         CALLER: ${{ inputs.caller_id }}
       run: |
+        FINAL_ID="git-report-ops-$CALLER";
         if [ -n "$INPUT_ID" ]; 
-            then FINAL_ID="$INPUT_ID"; 
-        else 
-            FINAL_ID="git-report-ops-$CALLER"; 
+            then FINAL_ID="$INPUT_ID";       
         fi
         echo "notify_id=$FINAL_ID" >> "$GITHUB_OUTPUT"
+        echo "✅ notify_id: $FINAL_ID"
+
+    # BLOCK 2: CIRCUIT BREAKER
+    - id: circuit_breaker_prefix_check
+      shell: bash
+      env:
+        HEAD_REF: ${{ github.head_ref }}
+        PREFIX: ${{ inputs.report_branch_prefix }}
+        BOT_EMAIL: ${{ inputs.bot_email }}
+      run: |
+        echo "::group::🛡️ Loop Protection Prefix Check"
+        if [[ "$HEAD_REF" == "$PREFIX"* ]]; then
+           echo "🛑 Loop Branch."
+           echo "skip=true" >> "$GITHUB_OUTPUT"
+           echo "reason=SKIPPED_LOOP" >> "$GITHUB_OUTPUT"
+           exit 0
+        fi
+        echo "✅ Prefix Safe."
+        echo "::endgroup::"
 
     # BLOCK 2: CIRCUIT BREAKER
     - id: circuit_breaker
@@ -87,14 +105,7 @@ runs:
         PREFIX: ${{ inputs.report_branch_prefix }}
         BOT_EMAIL: ${{ inputs.bot_email }}
       run: |
-        echo "::group::🛡️ Loop Protection"
-        if [[ "$HEAD_REF" == "$PREFIX"* ]]; then
-           echo "🛑 Loop Branch."
-           echo "skip=true" >> "$GITHUB_OUTPUT"
-           echo "reason=SKIPPED_LOOP" >> "$GITHUB_OUTPUT"
-           exit 0
-        fi
-        if [ -f .git/shallow ]; then git fetch --depth=1 origin "$HEAD_REF" 2>/dev/null || true; fi
+        echo "::group::🛡️ Loop Protection Email Check"
         LAST=$(git log -1 --pretty=format:'%ae')
         if [[ "$LAST" == "$BOT_EMAIL" ]]; then
            echo "🛑 Loop Bot."
@@ -102,10 +113,10 @@ runs:
            echo "reason=SKIPPED_LOOP" >> "$GITHUB_OUTPUT"
            exit 0
         fi
-        echo "✅ Safe."
+        echo "✅ Email Safe."
         echo "skip=false" >> "$GITHUB_OUTPUT"
         echo "::endgroup::"
-
+        
     # BLOCK 3: IDEMPOTENCY
     # 3.0 - Assinatura (CORRIGIDO PARA RENAMES)
     - id: calc_signature
