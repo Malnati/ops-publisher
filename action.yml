@@ -539,24 +539,6 @@ runs:
         echo "status=PUBLISHED"
         echo "::endgroup::"
 
-    - name: Notify Success
-      if: steps.publish.outputs.status == 'PUBLISHED'
-      uses: Malnati/pr-comment@v7.0.0
-      with:
-        token: ${{ inputs.token }}
-        pr_number: ${{ github.event.pull_request.number }}
-        message_id: ${{ steps.resolve_ids.outputs.notify_id }}
-        template_path: ${{ github.action_path }}/templates/notify-new-success.md
-        variables: |
-          {
-            "SIGNATURE": "${{ env.CODE_SIGNATURE }}",
-            "NEW_PR_URL": "${{ steps.publish.outputs.pr_url }}"
-          }
-        echo "::group::🐛 Debug Notify Success"
-        echo "CODE_SIGNATURE: $SIGNATURE passaed to Malnati/pr-comment@v7.0.0"
-        echo "pr_url: $NEW_PR_URL passaed to Malnati/pr-comment@v7.0.0"
-        echo "::endgroup::"
-
     # BLOCK 6: CONTROLLER
     - id: controller
       shell: bash
