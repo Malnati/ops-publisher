@@ -1,6 +1,6 @@
-# Malnati/git-report-ops@v1.3.1
+# Malnati/git-report-ops@v1.3.2
 name: "Git Report Ops"
-description: "Engine v1.3.1: Fix crítico na injeção de assinatura no corpo da PR."
+description: "Engine v1.3.2: Fix na criação do corpo da PR e isolamento de IDs de notificação."
 author: "Ricardo Malnati"
 
 branding:
@@ -15,10 +15,16 @@ inputs:
     description: "Arquivo Markdown para publicar."
     required: true
   caller_id:
-    description: "Identificador do chamador (ex: workflow filename) para rastreabilidade."
+    description: "Identificador do chamador para rastreabilidade."
     required: false
     default: "unknown-workflow"
   
+  # Identificação Única da Notificação (Anti-Colisão)
+  notification_id:
+    description: "ID único para o comentário Sticky na PR original. Se vazio, usa 'git-report-ops-{caller_id}'."
+    required: false
+    default: ""
+
   # Assinatura
   scan_extensions:
     description: "Extensões para assinatura."
@@ -81,6 +87,20 @@ runs:
         git config user.email "${{ inputs.bot_email }}"
         echo "✅ Setup complete."
         echo "::endgroup::"
+    
+    # Resolve o ID da Notificação (Prioridade: Input > Default)
+    - id: resolve_ids
+      shell: bash
+      env:
+        INPUT_ID: ${{ inputs.notification_id }}
+        CALLER: ${{ inputs.caller_id }}
+      run: |
+        if [ -n "$INPUT_ID" ]; then
+           FINAL_ID="$INPUT_ID"
+        else
+           FINAL_ID="git-report-ops-$CALLER"
+        fi
+        echo "notify_id=$FINAL_ID" >> "$GITHUB_OUTPUT"
 
     # ==================================================================
     # BLOCK 2: CIRCUIT BREAKER
@@ -140,7 +160,7 @@ runs:
         echo "🔑 Signature: $SIGNATURE"
         echo "::endgroup::"
 
-    # 3.1 - Busca Histórica (Global com Filtro de Chamador)
+    # 3.1 - Busca Histórica
     - id: search_history
       if: steps.circuit_breaker.outputs.skip != 'true'
       shell: bash
@@ -154,7 +174,6 @@ runs:
         git fetch --all --quiet
         
         SEARCH_SIG="> **Content Signature:** $SIGNATURE"
-        
         FOUND=$(git grep -I -F -l "$SEARCH_SIG" $(git rev-list --all --author="$BOT_EMAIL") -- "*.md" 2>/dev/null | head -n 1 || true)
 
         if [ -n "$FOUND" ]; then
@@ -189,17 +208,13 @@ runs:
            echo "existing_url=$URL" >> "$GITHUB_OUTPUT"
            
            if [ "$STATE" == "OPEN" ]; then
-              echo "🟢 PR is OPEN."
               echo "status_code=OPEN_EXISTING" >> "$GITHUB_OUTPUT"
            elif [ "$STATE" == "CLOSED" ] && [ "$MERGED" == "null" ]; then
-              echo "🔴 PR is CLOSED (Unmerged)."
               echo "status_code=CLOSED_UNMERGED" >> "$GITHUB_OUTPUT"
            else
-              echo "⚪ PR is Merged/Missing."
               echo "status_code=PREVIOUSLY_MERGED" >> "$GITHUB_OUTPUT"
            fi
         else
-           echo "⚠️ Branch not found. Treating as new."
            echo "status_code=NOT_FOUND" >> "$GITHUB_OUTPUT"
         fi
         echo "::endgroup::"
@@ -208,14 +223,13 @@ runs:
     # BLOCK 4: COMMUNICATION (PR A - NOTIFICATIONS)
     # ==================================================================
 
-    # 4.1 - Notificar PR Aberta
     - name: Notify Existing Open
       if: steps.analyze_pr_status.outputs.status_code == 'OPEN_EXISTING'
       uses: Malnati/pr-comment@v7.0.0
       with:
         token: ${{ inputs.token }}
         pr_number: ${{ github.event.pull_request.number }}
-        message_id: "git-report-ops-${{ inputs.caller_id }}"
+        message_id: ${{ steps.resolve_ids.outputs.notify_id }}
         template_path: ${{ github.action_path }}/templates/notify-found-open.md
         variables: |
           {
@@ -223,14 +237,13 @@ runs:
             "EXISTING_PR_URL": "${{ steps.analyze_pr_status.outputs.existing_url }}"
           }
 
-    # 4.2 - Notificar PR Fechada
     - name: Notify Existing Closed
       if: steps.analyze_pr_status.outputs.status_code == 'CLOSED_UNMERGED'
       uses: Malnati/pr-comment@v7.0.0
       with:
         token: ${{ inputs.token }}
         pr_number: ${{ github.event.pull_request.number }}
-        message_id: "git-report-ops-${{ inputs.caller_id }}"
+        message_id: ${{ steps.resolve_ids.outputs.notify_id }}
         template_path: ${{ github.action_path }}/templates/notify-found-closed.md
         variables: |
           {
@@ -238,14 +251,13 @@ runs:
             "EXISTING_PR_URL": "${{ steps.analyze_pr_status.outputs.existing_url }}"
           }
 
-    # 4.3 - Notificar Início de Novo Relatório
     - name: Notify New Start
       if: steps.search_history.outputs.found != 'true' || steps.analyze_pr_status.outputs.status_code == 'NOT_FOUND'
       uses: Malnati/pr-comment@v7.0.0
       with:
         token: ${{ inputs.token }}
         pr_number: ${{ github.event.pull_request.number }}
-        message_id: "git-report-ops-${{ inputs.caller_id }}"
+        message_id: ${{ steps.resolve_ids.outputs.notify_id }}
         template_path: ${{ github.action_path }}/templates/notify-new-start.md
         variables: |
           {
@@ -272,8 +284,6 @@ runs:
         DEFAULT_TEMPLATE: ${{ github.action_path }}/templates/pr-body-report.md
       run: |
         echo "::group::📝 Prep Files"
-        
-        # 1. Injeção de Metadata no Arquivo de Relatório (Item 6)
         TEMP="/tmp/meta.md"
         echo "" > "$TEMP"
         echo "> **Content Signature:** $SIGNATURE" >> "$TEMP"
@@ -284,27 +294,23 @@ runs:
         cat "$REPORT" >> "$TEMP"
         mv "$TEMP" "$REPORT"
 
-        # 2. Seleção do Template do Corpo da PR
         if [[ -n "$CUSTOM_TEMPLATE" && -f "$CUSTOM_TEMPLATE" ]]; then
            TEMPLATE_SOURCE="$CUSTOM_TEMPLATE"
         else
            TEMPLATE_SOURCE="$DEFAULT_TEMPLATE"
         fi
 
-        # 3. Processamento do Template (PR B)
         export USER_BODY PR_NUM HEAD_REF CALLER SIGNATURE
         PR_BODY_FILE="/tmp/pr_b_body.md"
         envsubst < "$TEMPLATE_SOURCE" > "$PR_BODY_FILE"
         
-        # --- CORREÇÃO APLICADA AQUI (Assinatura no Body) ---
         echo "" >> "$PR_BODY_FILE"
         echo "" >> "$PR_BODY_FILE"
-        # ---------------------------------------------------
         
         echo "pr_body_file=$PR_BODY_FILE" >> "$GITHUB_OUTPUT"
         echo "::endgroup::"
 
-    # 5.1 - Publish (Git Ops)
+    # 5.1 - Publish (Git Ops - Correção na Ordem de Criação)
     - id: publish
       if: steps.search_history.outputs.found != 'true' || steps.analyze_pr_status.outputs.status_code == 'NOT_FOUND'
       shell: bash
@@ -325,9 +331,26 @@ runs:
         git commit -m "docs: automated report [skip ci]"
         git push -f origin "$REPORT_BRANCH"
         
-        gh pr create --base "$HEAD_REF" --head "$REPORT_BRANCH" --title "$TITLE" --body-file "$BODY_FILE" || true
+        echo "📡 Managing Pull Request..."
+        
+        # 1. Tenta criar PR JÁ com o corpo correto
+        if gh pr create --base "$HEAD_REF" --head "$REPORT_BRANCH" --title "$TITLE" --body-file "$BODY_FILE"; then
+           echo "✅ New PR created successfully."
+        else
+           echo "ℹ️ PR creation skipped (likely exists). Proceeding to update."
+        fi
+        
+        # 2. Recupera URL e Garante Update
         PR_URL=$(gh pr view "$REPORT_BRANCH" --json url -q .url)
-        gh pr edit "$PR_URL" --body-file "$BODY_FILE" || true
+        
+        if [ -n "$PR_URL" ]; then
+           # Edita para garantir que o corpo esteja atualizado (mesmo que tenha sido criada antes)
+           gh pr edit "$PR_URL" --body-file "$BODY_FILE"
+           echo "✅ PR Updated."
+        else
+           echo "❌ Critical: Could not retrieve PR URL after creation attempt."
+           exit 1
+        fi
         
         echo "pr_url=$PR_URL" >> "$GITHUB_OUTPUT"
         echo "status=PUBLISHED" >> "$GITHUB_OUTPUT"
@@ -340,7 +363,7 @@ runs:
       with:
         token: ${{ inputs.token }}
         pr_number: ${{ github.event.pull_request.number }}
-        message_id: "git-report-ops-${{ inputs.caller_id }}"
+        message_id: ${{ steps.resolve_ids.outputs.notify_id }}
         template_path: ${{ github.action_path }}/templates/notify-new-success.md
         variables: |
           {
