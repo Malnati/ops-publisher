@@ -1,6 +1,6 @@
 # Malnati/git-report-ops@v1.3.5
 name: "Git Report Ops"
-description: "Engine v1.3.5: Fix de sintaxe YAML no passo de notificação."
+description: "Engine v1.3.5: Correção de sintaxe YAML nos steps de notificação."
 author: "Ricardo Malnati"
 
 branding:
@@ -57,13 +57,42 @@ runs:
       env:
         TOKEN: ${{ inputs.token }}
         REPORT: ${{ inputs.report_file }}
+        CALLER_ID: ${{ inputs.caller_id }}
+        SCAN_EXTENSIONS: ${{ inputs.scan_extensions }}
+        SCAN_EXCLUDE: ${{ inputs.scan_exclude }}
+        REPORT_BRANCH_PREFIX: ${{ inputs.report_branch_prefix }}
+        PR_TITLE: ${{ inputs.pr_title }}
+        PR_BODY: ${{ inputs.pr_body }}
+        BOT_EMAIL: ${{ inputs.bot_email }}
+        PR_TEMPLATE_PATH: ${{ inputs.pr_template_path }}
+        NOTIFICATION_ID: ${{ inputs.notification_id }}
       run: |
         echo "::group::🔧 Setup & Input Validation"
-        if [ -z "$TOKEN" ]; then echo "❌ Error: Token missing."; exit 1; fi
-        if [ ! -f "$REPORT" ]; then echo "❌ Error: Report missing."; exit 1; fi
+
+        # token (obrigatório)
+        if [ -z "$TOKEN" ]; then
+          echo "❌ [token] Obrigatório e não informado."
+          exit 1
+        else
+          echo "✅ [token] Informado."
+        fi
+
+        # report_file (obrigatório)
+        if [ -z "$REPORT" ]; then
+          echo "❌ [report_file] Caminho não informado."
+          exit 1
+        elif [ ! -f "$REPORT" ]; then
+          echo "❌ [report_file] Arquivo '$REPORT' não encontrado."
+          exit 1
+        else
+          echo "✅ [report_file] Encontrado em '$REPORT'."
+        fi
+        
+        # Configura git
         git config user.name "git-report-ops-bot"
         git config user.email "${{ inputs.bot_email }}"
-        echo "✅ Setup complete."
+
+        echo "✅ Input validation complete."
         echo "::endgroup::"
     
     - id: resolve_ids
@@ -72,7 +101,11 @@ runs:
         INPUT_ID: ${{ inputs.notification_id }}
         CALLER: ${{ inputs.caller_id }}
       run: |
-        if [ -n "$INPUT_ID" ]; then FINAL_ID="$INPUT_ID"; else FINAL_ID="git-report-ops-$CALLER"; fi
+        if [ -n "$INPUT_ID" ]; then
+           FINAL_ID="$INPUT_ID"
+        else
+           FINAL_ID="git-report-ops-$CALLER"
+        fi
         echo "notify_id=$FINAL_ID" >> "$GITHUB_OUTPUT"
 
     # BLOCK 2: CIRCUIT BREAKER
@@ -117,6 +150,7 @@ runs:
         git ls-tree -r HEAD --name-only | grep -E "\.($EXTS)$" | grep -vE "$EXCLUDE" > "$LIST_FILE" || true
         
         if [ -s "$LIST_FILE" ]; then
+           # CORREÇÃO: Hash inclui o nome do arquivo E o conteúdo
            xargs -a "$LIST_FILE" -d '\n' -r git hash-object > /tmp/content_hashes.txt
            paste "$LIST_FILE" /tmp/content_hashes.txt > /tmp/combined_state.txt
            SIGNATURE=$(md5sum /tmp/combined_state.txt | awk '{print $1}')
@@ -184,6 +218,16 @@ runs:
         echo "::endgroup::"
 
     # BLOCK 4: NOTIFICATIONS
+    # Removidos os comandos 'echo' inválidos que causavam erro de sintaxe
+
+    - id: notify_debug
+      shell: bash
+      run: |
+        echo "::group::🐛 Debug Notification Logic"
+        echo "status_code: ${{ steps.analyze_pr_status.outputs.status_code }}"
+        echo "found: ${{ steps.search_history.outputs.found }}"
+        echo "::endgroup::"
+
     - name: Notify Existing Open
       if: steps.analyze_pr_status.outputs.status_code == 'OPEN_EXISTING'
       uses: Malnati/pr-comment@v7.0.0
@@ -213,7 +257,7 @@ runs:
           }
 
     - name: Notify New Start
-      if: steps.search_history.outputs.found != 'true' || steps.analyze_pr_status.outputs.status_code == 'NOT_FOUND'
+      if: steps.search_history.outputs.found == 'false' || steps.analyze_pr_status.outputs.status_code == 'NOT_FOUND'
       uses: Malnati/pr-comment@v7.0.0
       with:
         token: ${{ inputs.token }}
@@ -227,7 +271,7 @@ runs:
 
     # BLOCK 5: PUBLISH
     - id: prepare_files
-      if: steps.search_history.outputs.found != 'true' || steps.analyze_pr_status.outputs.status_code == 'NOT_FOUND'
+      if: steps.search_history.outputs.found == 'false' || steps.analyze_pr_status.outputs.status_code == 'NOT_FOUND'
       shell: bash
       env:
         REPORT: ${{ inputs.report_file }}
@@ -268,7 +312,7 @@ runs:
         echo "::endgroup::"
 
     - id: publish
-      if: steps.search_history.outputs.found != 'true' || steps.analyze_pr_status.outputs.status_code == 'NOT_FOUND'
+      if: steps.search_history.outputs.found == 'false' || steps.analyze_pr_status.outputs.status_code == 'NOT_FOUND'
       shell: bash
       env:
         GH_TOKEN: ${{ inputs.token }}
@@ -280,6 +324,7 @@ runs:
       run: |
         echo "::group::🚀 Publishing"
         REPORT_BRANCH="${PREFIX}/${HEAD_REF}"
+        
         git checkout "$HEAD_REF"
         git checkout -B "$REPORT_BRANCH"
         git add "$REPORT"
