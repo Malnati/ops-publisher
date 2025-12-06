@@ -236,7 +236,7 @@ runs:
     # BLOCK 3: IDEMPOTENCY
     # 3.0 - Assinatura (CORRIGIDO PARA RENAMES)
     - id: calc_signature
-      if: steps.circuit_breaker.outputs.skip != 'true'
+      if: steps.circuit_breaker_email_check.outputs.skip != 'true'
       shell: bash
       env:
         EXTS: ${{ inputs.scan_extensions }}
@@ -269,7 +269,7 @@ runs:
 
     # 3.1 - Busca Histórica
     - id: search_history
-      if: steps.circuit_breaker.outputs.skip != 'true'
+      if: steps.circuit_breaker_email_check.outputs.skip != 'true'
       shell: bash
       env:
         SIGNATURE: ${{ env.CODE_SIGNATURE }}
