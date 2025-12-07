@@ -274,6 +274,8 @@ runs:
         fi
         echo "::endgroup::"
     
+    # BLOCK: 📝 COMMIT REPORT FILE
+    # Faz o commit do arquivo informado nesta mesma report_branch 
     - id: commit_report
       shell: bash
       env:
