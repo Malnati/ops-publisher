@@ -203,10 +203,10 @@ runs:
 
 
         
-    # BLOCK 1: BRANCH CONVENTION
+    # BLOCK 1: 🪾 BRANCH CONVENTION
     # Se a branch convensão inputs.report_branch_prefix não existir, então criar a branch
     - id: branch_convention
-    if: inputs.report_branch_prefix != github.head_ref
+      if: inputs.report_branch_prefix != github.head_ref
       shell: bash
       env:
         HEAD_REF: ${{ github.head_ref }}
@@ -220,10 +220,13 @@ runs:
         REPORT_BRANCH="${PREFIX}/${HEAD_REF}"
         echo "report_branch: $REPORT_BRANCH"
         
-        git checkout "$HEAD_REF"
-        git checkout -B "$REPORT_BRANCH"
-        
-        echo "✅ Report branch created: $REPORT_BRANCH"
+        if git show-ref --verify --quiet "refs/heads/$REPORT_BRANCH"; then
+          echo "⚠️ Branch já existe: $REPORT_BRANCH"
+        else
+          git checkout "$HEAD_REF"
+          git checkout -b "$REPORT_BRANCH"
+          echo "✅ Report branch criada: $REPORT_BRANCH"
+        fi
         echo "::endgroup::"
 
     - id: publish
