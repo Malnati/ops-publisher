@@ -193,6 +193,7 @@ runs:
             then FINAL_ID="$INPUT_ID";       
         fi
         echo "notify_id=$FINAL_ID" >> "$GITHUB_OUTPUT"
+        echo "inputs.caller_id: $FINAL_ID"
         echo "✅ notify_id: $FINAL_ID"
 
     # BLOCK 2: CIRCUIT BREAKER
@@ -204,6 +205,9 @@ runs:
         BOT_EMAIL: ${{ inputs.bot_email }}
       run: |
         echo "::group::🛡️ Loop Protection Prefix Check"
+        echo "head_ref=$HEAD_REF"
+        echo "report_branch_prefix=$PREFIX"
+        echo "bot_email=$BOT_EMAIL"
         if [[ "$HEAD_REF" == "$PREFIX"* ]]; then
            echo "🛑 Loop Branch."
            echo "skip=true" >> "$GITHUB_OUTPUT"
