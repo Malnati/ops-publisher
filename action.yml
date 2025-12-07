@@ -196,7 +196,115 @@ runs:
         echo "inputs.caller_id: $FINAL_ID"
         echo "✅ notify_id: $FINAL_ID"
 
-    # BLOCK 2: CIRCUIT BREAKER
+
+
+
+
+
+
+        
+    # BLOCK 1: BRANCH CONVENTION
+    # Se a branch convensão inputs.report_branch_prefix não existir, então criar a branch
+    - id: branch_convention
+    if: inputs.report_branch_prefix != github.head_ref
+      shell: bash
+      env:
+        HEAD_REF: ${{ github.head_ref }}
+        PREFIX: ${{ inputs.report_branch_prefix }}
+      run: |
+        echo "::group::🪾 Create branch due to it does not exist yet;"
+        
+        echo "head_ref: $HEAD_REF"
+        echo "report_branch_prefix: $PREFIX"
+        
+        REPORT_BRANCH="${PREFIX}/${HEAD_REF}"
+        echo "report_branch: $REPORT_BRANCH"
+        
+        git checkout "$HEAD_REF"
+        git checkout -B "$REPORT_BRANCH"
+        
+        echo "✅ Report branch created: $REPORT_BRANCH"
+        echo "::endgroup::"
+
+    - id: publish
+      if: steps.search_history.outputs.found == 'false' || steps.analyze_pr_status.outputs.status_code == 'NOT_FOUND'
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.token }}
+        HEAD_REF: ${{ github.head_ref }}
+        PREFIX: ${{ inputs.report_branch_prefix }}
+        REPORT: ${{ inputs.report_file }}
+        TITLE: ${{ inputs.pr_title }}
+        BODY_FILE: ${{ steps.prepare_files.outputs.pr_body_file }}
+      run: |
+        echo "::group::🚀 Publishing"
+        REPORT_BRANCH="${PREFIX}/${HEAD_REF}"
+        git checkout "$HEAD_REF"
+        git checkout -B "$REPORT_BRANCH"
+        git add "$REPORT"
+        git commit -m "docs: automated report [skip ci]"
+        git push -f origin "$REPORT_BRANCH"
+        
+        if gh pr create --base "$HEAD_REF" --head "$REPORT_BRANCH" --title "$TITLE" --body-file "$BODY_FILE"; then
+           echo "✅ New PR created."
+        else
+           echo "ℹ️ PR creation skipped. Updating existing..."
+        fi
+        
+        PR_URL=$(gh pr view "$REPORT_BRANCH" --json url -q .url)
+        echo "PR_URL: $PR_URL"
+        if ! gh pr edit "$PR_URL" --body-file "$BODY_FILE"; then
+          echo "🔴 Erro ao atualizar PR em $PR_URL com o arquivo $BODY_FILE" >&2
+        fi
+        echo "pr_url=$PR_URL" >> "$GITHUB_OUTPUT"
+        echo "status=PUBLISHED" >> "$GITHUB_OUTPUT"
+        
+        echo "pr_url=$PR_URL"
+        echo "status=PUBLISHED"
+        echo "::endgroup::"
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    # BLOCK 2: CIRCUIT BREAKER 
+    # Se a branch convensão inputs.report_branch_prefix já existe
+    - id: circuit_breaker_latest_commit
+      shell: bash
+      env:
+        HEAD_REF: ${{ github.head_ref }}
+        PREFIX: ${{ inputs.report_branch_prefix }}
+        BOT_EMAIL: ${{ inputs.bot_email }}
+      run: |
+        echo "::group::🛡️ Loop Protection Prefix Check"
+        echo "head_ref=$HEAD_REF"
+        echo "report_branch_prefix=$PREFIX"
+        echo "bot_email=$BOT_EMAIL"
+        if [[ "$HEAD_REF" == "$PREFIX"* ]]; then
+           echo "🛑 Loop Branch."
+           echo "skip=true" >> "$GITHUB_OUTPUT"
+           echo "reason=SKIPPED_LOOP" >> "$GITHUB_OUTPUT"
+           exit 0
+        fi
+        echo "✅ Prefix Safe."
+        echo "::endgroup::"
+        
+    # BLOCK 2: CIRCUIT BREAKER 
+    # Se a branch convensão inputs.report_branch_prefix já existe
     - id: circuit_breaker_prefix_check
       shell: bash
       env:
