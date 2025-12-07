@@ -1,6 +1,6 @@
-# Malnati/git-report-ops@v1.3.8
+# Malnati/git-report-ops@v1.3.9
 name: "Git Report Ops"
-description: "Engine v1.3.8: Fix de assinatura para renames e debug de notificação."
+description: "Engine de auditoria que assina o conteúdo, detecta renames e envia notificações padronizadas para Pull Requests."
 author: "Ricardo Malnati"
 
 branding:
@@ -400,17 +400,15 @@ runs:
 
     - name: Notify Existing Open
       if: steps.analyze_pr_status.outputs.status_code == 'OPEN_EXISTING'
-      uses: Malnati/pr-comment@v7.0.0
+      uses: Malnati/pr-comment@v8.0.0
+      env:
+        SIGNATURE: ${{ env.CODE_SIGNATURE }}
+        EXISTING_PR_URL: ${{ steps.analyze_pr_status.outputs.existing_url }}
       with:
         token: ${{ inputs.token }}
         pr_number: ${{ github.event.pull_request.number }}
         message_id: ${{ steps.resolve_ids.outputs.notify_id }}
         template_path: ${{ github.action_path }}/templates/notify-found-open.md
-        variables: |
-          {
-            "SIGNATURE": "${{ env.CODE_SIGNATURE }}",
-            "EXISTING_PR_URL": "${{ steps.analyze_pr_status.outputs.existing_url }}"
-          }
 
     - name: Debug Notify Existing Closed
       if: steps.analyze_pr_status.outputs.status_code == 'CLOSED_UNMERGED'
@@ -423,17 +421,15 @@ runs:
 
     - name: Notify Existing Closed
       if: steps.analyze_pr_status.outputs.status_code == 'CLOSED_UNMERGED'
-      uses: Malnati/pr-comment@v7.0.0
+      uses: Malnati/pr-comment@v8.0.0
+      env:
+        SIGNATURE: ${{ env.CODE_SIGNATURE }}
+        EXISTING_PR_URL: ${{ steps.analyze_pr_status.outputs.existing_url }}
       with:
         token: ${{ inputs.token }}
         pr_number: ${{ github.event.pull_request.number }}
         message_id: ${{ steps.resolve_ids.outputs.notify_id }}
         template_path: ${{ github.action_path }}/templates/notify-found-closed.md
-        variables: |
-          {
-            "SIGNATURE": "${{ env.CODE_SIGNATURE }}",
-            "EXISTING_PR_URL": "${{ steps.analyze_pr_status.outputs.existing_url }}"
-          }
 
     - name: Debug Notify New Start
       if: steps.search_history.outputs.found == 'false' || steps.analyze_pr_status.outputs.status_code == 'NOT_FOUND'
@@ -445,16 +441,14 @@ runs:
 
     - name: Notify New Start
       if: steps.search_history.outputs.found == 'false' || steps.analyze_pr_status.outputs.status_code == 'NOT_FOUND'
-      uses: Malnati/pr-comment@v7.0.0
+      uses: Malnati/pr-comment@v8.0.0
+      env:
+        SIGNATURE: ${{ env.CODE_SIGNATURE }}
       with:
         token: ${{ inputs.token }}
         pr_number: ${{ github.event.pull_request.number }}
         message_id: ${{ steps.resolve_ids.outputs.notify_id }}
         template_path: ${{ github.action_path }}/templates/notify-new-start.md
-        variables: |
-          {
-            "SIGNATURE": "${{ env.CODE_SIGNATURE }}"
-          }
 
     - name: Debug Notify Success
       if: steps.publish.outputs.status == 'PUBLISHED'
@@ -467,17 +461,15 @@ runs:
 
     - name: Notify Success
       if: steps.publish.outputs.status == 'PUBLISHED'
-      uses: Malnati/pr-comment@v7.0.0
+      uses: Malnati/pr-comment@v8.0.0
+      env:
+        SIGNATURE: ${{ env.CODE_SIGNATURE }}
+        NEW_PR_URL: ${{ steps.publish.outputs.pr_url }}
       with:
         token: ${{ inputs.token }}
         pr_number: ${{ github.event.pull_request.number }}
         message_id: ${{ steps.resolve_ids.outputs.notify_id }}
         template_path: ${{ github.action_path }}/templates/notify-new-success.md
-        variables: |
-          {
-            "SIGNATURE": "${{ env.CODE_SIGNATURE }}",
-            "NEW_PR_URL": "${{ steps.publish.outputs.pr_url }}"
-          }
           
     # BLOCK 5: PUBLISH
     - id: prepare_files
