@@ -228,42 +228,56 @@ runs:
           git checkout -b "$REPORT_BRANCH"
           echo "✅ Report branch criada: $REPORT_BRANCH"
         fi
+        echo "report_branch=$REPORT_BRANCH" >> "$GITHUB_OUTPUT"
         echo "::endgroup::"
 
     # BLOCK: 🔎 LATEST COMMIT CANNOT BE BOT
-    # Se o ultimo commit do repositório for do bot, nesta mesma não é necessário continuar
+    # Se o ultimo commit do repositório for do bot, nesta mesma report_branch não é necessário continuar
     - id: latest_commit_verify
       shell: bash
       env:
         BOT_EMAIL: ${{ inputs.bot_email }}
       run: |
-        echo "::group::🔎 Verify latest commit owner"
+        echo "::group::🔎 Verify latest commit owner and branch"
     
         git fetch --all --prune
     
         LATEST_SHA="$(git rev-list --all -n 1)"
-        echo "latest_sha: $LATEST_SHA"
+        CURRENT_SHA="$(git rev-parse HEAD)"
+        CURRENT_BRANCH="$(git rev-parse --abbrev-ref HEAD)"
     
         COMMIT_AUTHOR_RAW="$(git show -s --format='%an|%ae' "$LATEST_SHA")"
         COMMIT_AUTHOR_NAME="${COMMIT_AUTHOR_RAW%%|*}"
         COMMIT_AUTHOR_EMAIL="${COMMIT_AUTHOR_RAW##*|}"
     
+        echo "latest_sha: $LATEST_SHA"
+        echo "current_sha: $CURRENT_SHA"
+        echo "current_branch: $CURRENT_BRANCH"
         echo "commit_author_name: $COMMIT_AUTHOR_NAME"
         echo "commit_author_email: $COMMIT_AUTHOR_EMAIL"
         echo "bot_email: $BOT_EMAIL"
     
+        is_bot_commit=false
         if [ "$COMMIT_AUTHOR_EMAIL" = "$BOT_EMAIL" ]; then
-          echo "is_bot_commit=true" >> "$GITHUB_OUTPUT"
-          echo "✅ Latest commit belongs to bot."
-        else
-          echo "is_bot_commit=false" >> "$GITHUB_OUTPUT"
-          echo "✅ Latest commit belongs to another author."
+          is_bot_commit=true
         fi
     
+        is_latest_on_current_branch=false
+        if [ "$LATEST_SHA" = "$CURRENT_SHA" ]; then
+          is_latest_on_current_branch=true
+        fi
+    
+        should_skip=false
+        if [ "$is_bot_commit" = true ] && [ "$is_latest_on_current_branch" = true ]; then
+          should_skip=true
+        fi
+    
+        echo "is_bot_commit=$is_bot_commit" >> "$GITHUB_OUTPUT"
+        echo "is_latest_on_current_branch=$is_latest_on_current_branch" >> "$GITHUB_OUTPUT"
+        echo "should_skip=$should_skip" >> "$GITHUB_OUTPUT"
         echo "latest_sha=$LATEST_SHA" >> "$GITHUB_OUTPUT"
         echo "latest_author_name=$COMMIT_AUTHOR_NAME" >> "$GITHUB_OUTPUT"
         echo "latest_author_email=$COMMIT_AUTHOR_EMAIL" >> "$GITHUB_OUTPUT"
-    
         echo "::endgroup::"
     
     - id: publish
