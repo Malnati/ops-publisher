@@ -195,31 +195,32 @@ runs:
         echo "notify_id=$FINAL_ID" >> "$GITHUB_OUTPUT"
         echo "inputs.caller_id: $FINAL_ID"
         echo "✅ notify_id: $FINAL_ID"
+        echo "::endgroup::"
 
-
-
-
-
-
-
-        
-    # BLOCK 1: 🪾 BRANCH CONVENTION
+    # BLOCK: 🪾 BRANCH CONVENTION
     # Se a branch convensão inputs.report_branch_prefix não existir, então criar a branch
     - id: branch_convention
-      if: inputs.report_branch_prefix != github.head_ref
       shell: bash
       env:
         HEAD_REF: ${{ github.head_ref }}
-        PREFIX: ${{ inputs.report_branch_prefix }}
       run: |
         echo "::group::🪾 Create branch due to it does not exist yet;"
         
         echo "head_ref: $HEAD_REF"
+    
+        git fetch --all --prune
+    
+        LATEST_SHA="$(git rev-list --all -n 1)"
+        CUSTOM_SUFFIX="${LATEST_SHA: -10}"
+        PREFIX="ops/report/latest/${CUSTOM_SUFFIX}"
+    
+        echo "latest_sha: $LATEST_SHA"
+        echo "custom_suffix: $CUSTOM_SUFFIX"
         echo "report_branch_prefix: $PREFIX"
-        
+    
         REPORT_BRANCH="${PREFIX}/${HEAD_REF}"
         echo "report_branch: $REPORT_BRANCH"
-        
+    
         if git show-ref --verify --quiet "refs/heads/$REPORT_BRANCH"; then
           echo "⚠️ Branch já existe: $REPORT_BRANCH"
         else
@@ -241,9 +242,7 @@ runs:
         BODY_FILE: ${{ steps.prepare_files.outputs.pr_body_file }}
       run: |
         echo "::group::🚀 Publishing"
-        REPORT_BRANCH="${PREFIX}/${HEAD_REF}"
-        git checkout "$HEAD_REF"
-        git checkout -B "$REPORT_BRANCH"
+        
         git add "$REPORT"
         git commit -m "docs: automated report [skip ci]"
         git push -f origin "$REPORT_BRANCH"
