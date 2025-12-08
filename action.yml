@@ -1,4 +1,4 @@
-# Malnati/git-report-ops@v1.3.12
+# Malnati/git-report-ops@v1.3.13
 name: "Git Report Ops"
 description: "Engine de auditoria que assina o conteúdo, detecta renames e envia notificações padronizadas para Pull Requests."
 author: "Ricardo Malnati"
@@ -52,7 +52,8 @@ runs:
   using: "composite"
   steps:
 
-    - id: validate_inputs
+    - name: "🔧 Setup & Input Validation"
+    - id: step_validate_inputs
       shell: bash
       env:
         TOKEN: ${{ inputs.token }}
@@ -181,8 +182,9 @@ runs:
 
         echo "✅ Input validation complete."
         echo "::endgroup::"
-    
-    - id: resolve_ids
+
+    - name: "ℹ Resolve IDs"
+    - id: step_resolve_ids
       shell: bash
       env:
         INPUT_ID: ${{ inputs.notification_id }}
@@ -197,37 +199,29 @@ runs:
         echo "✅ notify_id: $FINAL_ID"
         echo "::endgroup::"
 
-    # BLOCK: 🪾 BRANCH CONVENTION
-    # Se a branch convensão inputs.report_branch_prefix não existir, então criar a branch
-    - id: branch_convention
+    - name: "🪾 Branch Convention"
+    - id: step_branch_convention
       shell: bash
       env:
         HEAD_REF: ${{ github.head_ref }}
       run: |
         echo "::group::🪾 Create branch due to it does not exist yet;"
-        
         echo "head_ref: $HEAD_REF"
-    
         git fetch --all --prune
-    
         LATEST_SHA="$(git rev-list --all -n 1)"
         CUSTOM_SUFFIX="${LATEST_SHA: -10}"
         PREFIX="ops/report/latest/${CUSTOM_SUFFIX}"
-    
         echo "latest_sha: $LATEST_SHA"
         echo "custom_suffix: $CUSTOM_SUFFIX"
         echo "report_branch_prefix: $PREFIX"
-    
         REPORT_BRANCH="${PREFIX}/${HEAD_REF}"
         echo "report_branch: $REPORT_BRANCH"
-        
         if [ "$CURRENT_BRANCH" = "$REPORT_BRANCH" ]; then
           echo "✅ Já está na própria report branch: $REPORT_BRANCH. Nada a fazer."
           echo "report_branch=$REPORT_BRANCH" >> "$GITHUB_OUTPUT"
           echo "::endgroup::"
           exit 0
         fi
-        
         if git show-ref --verify --quiet "refs/heads/$REPORT_BRANCH"; then
           echo "⚠️ Branch já existe: $REPORT_BRANCH"
         else
@@ -237,7 +231,18 @@ runs:
         fi
         echo "report_branch=$REPORT_BRANCH" >> "$GITHUB_OUTPUT"
         echo "::endgroup::"
-
+    
+        - name: 🐛 Notify Branch Convention
+          uses: Malnati/pr-comment@v8.0.0
+          env:
+            BODY_MESSAGE: |
+              Branch criada
+          with:
+            token: ${{ inputs.token }}
+            pr_number: ${{ github.event.pull_request.number }}
+            use_raw_body: "true"
+        
+        
     # BLOCK: 🔎 LATEST COMMIT CANNOT BE BOT
     # Se o ultimo commit do repositório for do bot, nesta mesma report_branch não é necessário continuar
     - id: latest_commit_verify
@@ -378,100 +383,6 @@ runs:
         fi
         echo "::endgroup::"
 
-    # BLOCK 4: NOTIFICATIONS (PR origem)
-    # Debug para garantir que as variáveis estão disponíveis
-    - id: notify_debug
-      shell: bash
-      run: |
-        echo "::group::🐛 Debug Notification Logic"
-        echo "status_code: ${{ steps.analyze_pr_status.outputs.status_code }}"
-        echo "found: ${{ steps.search_history.outputs.found }}"
-        echo "::endgroup::"
-
-    - name: Debug Notify Existing Open
-      if: steps.analyze_pr_status.outputs.status_code == 'OPEN_EXISTING'
-      shell: bash
-      run: |
-        echo "::group::🐛 Debug Notify Existing Open"
-        echo "CODE_SIGNATURE: ${{ env.CODE_SIGNATURE }}"
-        echo "EXISTING_PR_URL: ${{ steps.analyze_pr_status.outputs.existing_url }}"
-        echo "::endgroup::"
-
-    - name: Notify Existing Open
-      if: steps.analyze_pr_status.outputs.status_code == 'OPEN_EXISTING'
-      uses: Malnati/pr-comment@v8.0.0
-      env:
-        SIGNATURE: ${{ env.CODE_SIGNATURE }}
-        EXISTING_PR_URL: ${{ steps.analyze_pr_status.outputs.existing_url }}
-      with:
-        token: ${{ inputs.token }}
-        pr_number: ${{ github.event.pull_request.number }}
-        message_id: ${{ steps.resolve_ids.outputs.notify_id }}
-        template_path: ${{ github.action_path }}/templates/notify-found-open.md
-
-    - name: Debug Notify Existing Closed
-      if: steps.analyze_pr_status.outputs.status_code == 'CLOSED_UNMERGED'
-      shell: bash
-      run: |
-        echo "::group::🐛 Debug Notify Existing Closed"
-        echo "CODE_SIGNATURE: ${{ env.CODE_SIGNATURE }}"
-        echo "EXISTING_PR_URL: ${{ steps.analyze_pr_status.outputs.existing_url }}"
-        echo "::endgroup::"
-
-    - name: Notify Existing Closed
-      if: steps.analyze_pr_status.outputs.status_code == 'CLOSED_UNMERGED'
-      uses: Malnati/pr-comment@v8.0.0
-      env:
-        SIGNATURE: ${{ env.CODE_SIGNATURE }}
-        EXISTING_PR_URL: ${{ steps.analyze_pr_status.outputs.existing_url }}
-      with:
-        token: ${{ inputs.token }}
-        pr_number: ${{ github.event.pull_request.number }}
-        message_id: ${{ steps.resolve_ids.outputs.notify_id }}
-        template_path: ${{ github.action_path }}/templates/notify-found-closed.md
-
-    - name: Debug Notify New Start
-      if: steps.analyze_pr_status.outputs.status_code == 'NOT_FOUND'
-      shell: bash
-      run: |
-        echo "::group::🐛 Debug Notify New Start"
-        echo "CODE_SIGNATURE: ${{ env.CODE_SIGNATURE }}"
-        echo "::endgroup::"
-
-    - name: Notify New Start
-      if: steps.analyze_pr_status.outputs.status_code == 'NOT_FOUND'
-      uses: Malnati/pr-comment@v8.0.0
-      env:
-        SIGNATURE: ${{ env.CODE_SIGNATURE }}
-      with:
-        token: ${{ inputs.token }}
-        pr_number: ${{ github.event.pull_request.number }}
-        message_id: ${{ steps.resolve_ids.outputs.notify_id }}
-        template_path: ${{ github.action_path }}/templates/notify-new-start.md
-
-    - name: Debug Notify Success
-      if: steps.publish.outputs.status == 'PUBLISHED'
-      shell: bash
-      run: |
-        echo "::group::🐛 Debug Notify Success"
-        echo "CODE_SIGNATURE: ${{ env.CODE_SIGNATURE }}"
-        echo "NEW_PR_URL: ${{ steps.publish.outputs.pr_url }}"
-        echo "::endgroup::"
-
-    - name: Notify Success
-      if: steps.publish.outputs.status == 'PUBLISHED'
-      uses: Malnati/pr-comment@v8.0.0
-      env:
-        SIGNATURE: ${{ env.CODE_SIGNATURE }}
-        NEW_PR_URL: ${{ steps.publish.outputs.pr_url }}
-        ATTACHED_FILE: ${{ inputs.report_file }}
-        CALLER_ID: ${{ inputs.caller_id }}
-      with:
-        token: ${{ inputs.token }}
-        pr_number: ${{ github.event.pull_request.number }}
-        message_id: ${{ steps.resolve_ids.outputs.notify_id }}
-        template_path: ${{ github.action_path }}/templates/notify-new-success.md
-          
     # BLOCK 5: PUBLISH
     - id: prepare_files
       if: steps.analyze_pr_status.outputs.status_code == 'NOT_FOUND'
