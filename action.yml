@@ -1,4 +1,4 @@
-# Malnati/git-report-ops@v1.3.18
+# Malnati/git-report-ops@v1.3.19
 name: "Git Report Ops"
 description: "Engine de auditoria que assina o conteúdo, detecta renames e envia notificações padronizadas para Pull Requests."
 author: "Ricardo Malnati"
@@ -332,8 +332,11 @@ runs:
            
            echo "existing_url=$URL" >> "$GITHUB_OUTPUT"
            echo "pr_state=$STATE" >> "$GITHUB_OUTPUT"
-           
-           if [ "$STATE" == "OPEN" ]; then
+           if [ -z "$PR_DATA" ] || [ "$PR_DATA" = "[]" ]; then
+              echo "⚠️ No PR found for this branch."
+              echo "status_code=NOT_FOUND" >> "$GITHUB_OUTPUT"
+              echo "::endgroup::"
+           elif [ "$STATE" == "OPEN" ]; then
               echo "🟢 PR is OPEN."
               echo "status_code=OPEN_EXISTING" >> "$GITHUB_OUTPUT"
            elif [ "$STATE" == "CLOSED" ] && [ "$MERGED" == "null" ]; then
@@ -349,9 +352,9 @@ runs:
         fi
         echo "::endgroup::"
 
-    - id: publish
-      name: "🚀 Publishing"
-      if: steps.analyze_pr_status.outputs.status_code == 'NOT_FOUND'
+    - id: publish_pr
+      name: "🚀 Publishing/Updating Pull Request"
+      if: steps.analyze_pr_status.outputs.status_code != 'PREVIOUSLY_MERGED' || steps.analyze_pr_status.outputs.status_code != 'CLOSED_UNMERGED'
       shell: bash
       env:
         GH_TOKEN: ${{ inputs.token }}
@@ -369,8 +372,8 @@ runs:
         fi
         PR_URL=$(gh pr view "$REPORT_BRANCH" --json url -q .url)
         echo "PR_URL: $PR_URL"
-        if ! gh pr edit "$PR_URL" --body-file "$BODY_FILE"; then
-          echo "🔴 Erro ao atualizar PR em $PR_URL com o arquivo $BODY_FILE" >&2
+        if ! gh pr edit "$PR_URL" --body-file "$PR_TEMPLATE_PATH"; then
+          echo "🔴 Erro ao atualizar PR em $PR_URL com o arquivo $PR_TEMPLATE_PATH" >&2
         fi
         echo "pr_url: $PR_URL"
         echo "::endgroup::"
