@@ -6,11 +6,12 @@
 >
 > Um relatório com esta assinatura já foi gerado, mas a PR associada foi fechada sem merge. Por favor, verifique a pendência antes de gerar novos relatórios.
 
-| 🏷️ Dado | ℹ️ Valor |
-| :--- | :--- |
-| **Assinatura** | `${SIGNATURE}` |
-| **Status PR** | 🔴 CLOSED/UNMERGED |
-| **Ação** | 👉 **[Verificar PR Fechada](${EXISTING_PR_URL})** |
+**Status PR** 🔴 CLOSED/UNMERGED
+
+👉 **[Acessar Pull Request existente: ](${EXISTING_PR_URL})** 
 
 ---
-<div align="right"><sub>Gerado por <b>Git Report Ops</b></sub></div>
+<div align="right">
+  <sub>Automação de Governança</sub>
+  <sub>Malnati/git-report-ops/templates/pr-body-report.md</sub>
+</div>

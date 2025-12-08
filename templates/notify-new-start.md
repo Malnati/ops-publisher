@@ -1,13 +1,16 @@
 <!-- templates/notify-new-start.md -->
-## 🛡️ Iniciando Auditoria
+## 🛡️ Iniciando isolamento de arquivo
 
 > [!IMPORTANT]
-> **Status:** `New Content Detected`
+> **Status:** `Novo conteúdo detectado`
 >
-> Alterações relevantes foram detectadas no código.
+> Um novo arquivo ou conteúdo relevante foi identificado (${ATTACHED_FILE}).
 >
-> ⏳ **Ação:** Gerando novo relatório de auditoria e criando PR dedicada...
-> *Aguarde a atualização deste comentário.*
+> ⏳ **Ação:** Criando uma branch dedicada e preparando uma Pull Request para isolar esse arquivo da branch original.
+> *Este comentário será atualizado quando o processo for concluído.*
 
 ---
-<div align="right"><sub>Gerado por <b>Git Report Ops</b></sub></div>
+<div align="right">
+  <sub>Automação de Governança</sub>
+  <sub>Malnati/git-report-ops/templates/pr-body-report.md</sub>
+</div>

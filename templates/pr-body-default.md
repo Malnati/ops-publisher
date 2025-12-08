@@ -1,9 +1,10 @@
 <!-- templates/pr-body-default.md -->
-# 🛡️ Relatório de Auditoria Automatizado
+# 🛡️ Automatização de Pull Request
 
 > [!IMPORTANT]
-> **Atenção:** Esta Pull Request foi gerada automaticamente pela engine `git-report-ops`.
-> Ela contém artefatos técnicos para análise e não deve ser mergeada manualmente sem revisão.
+> **Atenção:** Esta automação cria um Pull Request contendo um arquivo para ser trabalhado
+> separadamente da branch (ramo) original. O objetivo é isolar as mudanças referentes ao
+> arquivo adicionado em um ramo do seu repositório, com sua própria Pull Request. Origem:
 
 ## 📝 Resumo
 ${USER_BODY}
@@ -16,4 +17,5 @@ ${USER_BODY}
 ---
 <div align="right">
   <sub>Gerado por <b>Git Report Ops</b></sub>
+  <sub>Malnati/git-report-ops/templates/pr-body-default.md</sub>
 </div>
