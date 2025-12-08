@@ -1,4 +1,4 @@
-# Malnati/git-report-ops@v1.3.11
+# Malnati/git-report-ops@v1.3.12
 name: "Git Report Ops"
 description: "Engine de auditoria que assina o conteúdo, detecta renames e envia notificações padronizadas para Pull Requests."
 author: "Ricardo Malnati"
@@ -51,7 +51,7 @@ outputs:
 runs:
   using: "composite"
   steps:
-    # BLOCK 1: SETUP
+
     - id: validate_inputs
       shell: bash
       env:
@@ -325,7 +325,6 @@ runs:
 
     # 3.2 - Análise de PR Existente
     - id: analyze_pr_status
-      if: steps.search_history.outputs.found == 'true'
       shell: bash
       env:
         GH_TOKEN: ${{ inputs.token }}
@@ -379,7 +378,7 @@ runs:
         fi
         echo "::endgroup::"
 
-    # BLOCK 4: NOTIFICATIONS (PR A)
+    # BLOCK 4: NOTIFICATIONS (PR origem)
     # Debug para garantir que as variáveis estão disponíveis
     - id: notify_debug
       shell: bash
@@ -432,7 +431,7 @@ runs:
         template_path: ${{ github.action_path }}/templates/notify-found-closed.md
 
     - name: Debug Notify New Start
-      if: steps.search_history.outputs.found == 'false' || steps.analyze_pr_status.outputs.status_code == 'NOT_FOUND'
+      if: steps.analyze_pr_status.outputs.status_code == 'NOT_FOUND'
       shell: bash
       run: |
         echo "::group::🐛 Debug Notify New Start"
@@ -440,7 +439,7 @@ runs:
         echo "::endgroup::"
 
     - name: Notify New Start
-      if: steps.search_history.outputs.found == 'false' || steps.analyze_pr_status.outputs.status_code == 'NOT_FOUND'
+      if: steps.analyze_pr_status.outputs.status_code == 'NOT_FOUND'
       uses: Malnati/pr-comment@v8.0.0
       env:
         SIGNATURE: ${{ env.CODE_SIGNATURE }}
@@ -475,7 +474,7 @@ runs:
           
     # BLOCK 5: PUBLISH
     - id: prepare_files
-      if: steps.search_history.outputs.found == 'false' || steps.analyze_pr_status.outputs.status_code == 'NOT_FOUND'
+      if: steps.analyze_pr_status.outputs.status_code == 'NOT_FOUND'
       shell: bash
       env:
         REPORT: ${{ inputs.report_file }}
@@ -517,7 +516,7 @@ runs:
         echo "::endgroup::"
 
     - id: publish
-      if: steps.search_history.outputs.found == 'false' || steps.analyze_pr_status.outputs.status_code == 'NOT_FOUND'
+      if: steps.analyze_pr_status.outputs.status_code == 'NOT_FOUND'
       shell: bash
       env:
         GH_TOKEN: ${{ inputs.token }}
