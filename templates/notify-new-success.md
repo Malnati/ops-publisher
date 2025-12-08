@@ -1,21 +1,20 @@
 <!-- templates/notify-new-success.md -->
-## 🛡️ Auditoria Concluída
+## 🛡️ Arquivo isolado em nova branch
 
 > [!TIP]
-> **Status:** `Arquivo Publicado`
-> Esta automação criou um Pull Request contendo um arquivo ${ATTACHED_FILE} para ser trabalhado isolando
-> as mudanças da branch original, onde estão contidas as versões dos seus arquivos. Entã, você terá a
-> possibilidade de editar o que você necessário sem afetar os seus arquivos que estão na branch original,
-> até que você julgue conveniente de integrar com o ramo original.
+> **Status:** `Arquivo isolado`
+> Esta automação criou uma nova branch contendo o arquivo ${ATTACHED_FILE} a partir da sua branch original.
+> Assim, você poderá trabalhar neste arquivo de forma independente, mantendo a branch original intacta até
+> decidir integrar as mudanças.
 >
-> O objetivo é isolar as mudanças referentes o arquivo ${ATTACHED_FILE} em um ramo do seu repositório, com sua própria Pull Request.
+> O objetivo é isolar as alterações referentes ao arquivo ${ATTACHED_FILE} em um ramo dedicado do seu
+> repositório, com sua própria Pull Request apontando para a branch de origem.
 >
 > Origem: ${CALLER_ID}
 >
-> Um novo relatório de auditoria foi gerado e isolado em uma branch dedicada.
+> Um novo ramo dedicado foi criado e vinculado à sua branch original por meio da Pull Request abaixo.
 
-
- 👉 **[PR gerada automaticamente: ](${NEW_PR_URL})** 
+👉 **[Pull Request gerada automaticamente](${NEW_PR_URL})**
 
 ---
 <div align="right">
