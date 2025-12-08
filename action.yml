@@ -1,4 +1,4 @@
-# Malnati/git-report-ops@v1.3.13
+# Malnati/git-report-ops@v1.3.14
 name: "Git Report Ops"
 description: "Engine de auditoria que assina o conteúdo, detecta renames e envia notificações padronizadas para Pull Requests."
 author: "Ricardo Malnati"
@@ -51,9 +51,8 @@ outputs:
 runs:
   using: "composite"
   steps:
-
-    - name: "🔧 Setup & Input Validation"
     - id: step_validate_inputs
+      name: "🔧 Setup & Input Validation"
       shell: bash
       env:
         TOKEN: ${{ inputs.token }}
@@ -183,8 +182,8 @@ runs:
         echo "✅ Input validation complete."
         echo "::endgroup::"
 
-    - name: "ℹ Resolve IDs"
     - id: step_resolve_ids
+      name: "ℹ Resolve IDs"
       shell: bash
       env:
         INPUT_ID: ${{ inputs.notification_id }}
@@ -199,8 +198,8 @@ runs:
         echo "✅ notify_id: $FINAL_ID"
         echo "::endgroup::"
 
-    - name: "🪾 Branch Convention"
-    - id: step_branch_convention
+    - id: branch_convention
+      name: "🪾 Branch Convention"
       shell: bash
       env:
         HEAD_REF: ${{ github.head_ref }}
@@ -231,18 +230,18 @@ runs:
         fi
         echo "report_branch=$REPORT_BRANCH" >> "$GITHUB_OUTPUT"
         echo "::endgroup::"
-    
-        - name: 🐛 Notify Branch Convention
-          uses: Malnati/pr-comment@v8.0.0
-          env:
-            BODY_MESSAGE: |
-              Branch criada
-          with:
-            token: ${{ inputs.token }}
-            pr_number: ${{ github.event.pull_request.number }}
-            use_raw_body: "true"
-        
-        
+
+    - id: notify_branch_convention
+      name: "🐛 Notify Branch Convention"
+      uses: Malnati/pr-comment@v8.0.0
+      env:
+        BODY_MESSAGE: |
+          Branch criada
+      with:
+        token: ${{ inputs.token }}
+        pr_number: ${{ github.event.pull_request.number }}
+        use_raw_body: "true"
+
     # BLOCK: 🔎 LATEST COMMIT CANNOT BE BOT
     # Se o ultimo commit do repositório for do bot, nesta mesma report_branch não é necessário continuar
     - id: latest_commit_verify
