@@ -12,4 +12,7 @@ ${USER_BODY}
 Esta auditoria pertence à **PR #${PR_NUM}** (Branch: `${HEAD_REF}`).
 
 ---
-<div align="right"><sub>Automação de Governança</sub></div>
+<div align="right">
+  <sub>Automação de Governança</sub>
+  <sub>Malnati/git-report-ops/templates/pr-body-report.md</sub>
+</div>
