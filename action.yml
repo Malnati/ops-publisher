@@ -1,4 +1,4 @@
-# Malnati/git-report-ops@v1.3.16
+# Malnati/git-report-ops@v1.3.17
 name: "Git Report Ops"
 description: "Engine de auditoria que assina o conteúdo, detecta renames e envia notificações padronizadas para Pull Requests."
 author: "Ricardo Malnati"
@@ -25,10 +25,10 @@ inputs:
     default: "node_modules|dist|build|.git|.github"
   report_branch_prefix:
     required: false
-    default: "audit/report"
+    default: "ops/files"
   pr_title:
     required: false
-    default: "🛡️ Automated Audit Report"
+    default: "🛡️ Automated Pull Request"
   pr_body:
     required: false
     default: "Relatório de auditoria."
@@ -36,7 +36,7 @@ inputs:
     required: false
     default: "git-report-ops@users.noreply.github.com"
   pr_template_path:
-    required: false
+    required: true
     default: ""
   notification_id:
     required: false
@@ -150,10 +150,11 @@ runs:
         git config user.name "git-report-ops-bot"
         git config user.email "$BOT_EMAIL"
 
-        # pr_template_path (opcional)
+        # pr_template_path (obrigatório)
         if [ -z "$PR_TEMPLATE_PATH" ]; then
-          echo "ℹ️ [pr_template_path] Não informado. Será usado o template padrão em 'templates/pr-body-report.md'."
+          echo "❌  [pr_template_path] Não informado."
           echo "   ➜ Defina 'pr_template_path' com o caminho de um template customizado para personalizar o corpo do PR."
+          exit 1;
         else
           if [ -f "$PR_TEMPLATE_PATH" ]; then
             echo "ℹ️ [pr_template_path] Template customizado encontrado em '$PR_TEMPLATE_PATH'."
@@ -301,51 +302,31 @@ runs:
       uses: Malnati/pr-comment@v8.0.0
       env:
         REPORT: ${{ inputs.report_file }}
-        BODY_MESSAGE: "A branch do arquivo ${{ inputs.report_file }} é ${{ steps.branch_convention.outputs.report_branch }} e o commit referente a inclusão deste arquivo é ${{steps.outputs.commit_report.commit_sha}}"
+        BODY_MESSAGE: "A branch do arquivo ${{ inputs.report_file }} é ${{ steps.branch_convention.outputs.report_branch }} e o commit referente a inclusão deste arquivo é ${{steps.commit_report.outputs.commit_sha}}"
       with:
         token: ${{ inputs.token }}
         pr_number: ${{ github.event.pull_request.number }}
         use_raw_body: "true"
 
-    # 3.2 - Análise de PR Existente
     - id: analyze_pr_status
+      name: "🔍 Análise de PR Existente"
       shell: bash
       env:
         GH_TOKEN: ${{ inputs.token }}
-        COMMIT_SHA: ${{ steps.search_history.outputs.commit_sha }}
-        PREFIX: ${{ inputs.report_branch_prefix }}
+        COMMIT_SHA: ${{ steps.commit_report.outputs.commit_sha }}
+        REPORT_BRANCH: ${{ steps.branch_convention.outputs.report_branch }}
       run: |
         echo "::group::🔍 Analyzing Existing PR"
-        BRANCHES=$(git branch -r --contains "$COMMIT_SHA" 2>/dev/null || true)
-        echo "BRANCHES:"
-        echo "$BRANCHES"
-        
-        FILTERED=$(printf '%s\n' "$BRANCHES" | grep "$PREFIX" 2>/dev/null || true)
-        echo "FILTERED:"
-        echo "$FILTERED"
-        
-        FIRST=$(printf '%s\n' "$FILTERED" | head -n 1 || true)
-        echo "FIRST:"
-        echo "$FIRST"
-        
-        STRIPPED=$(printf '%s\n' "$FIRST" | sed 's#origin/##' || true)
-        echo "STRIPPED:"
-        echo "$STRIPPED"
-        
-        TARGET=$(printf '%s\n' "$STRIPPED" | xargs || true)
-        echo "TARGET: $TARGET"
-        
-        if [ -n "$TARGET" ]; then
-           PR_DATA=$(gh pr list --head "$TARGET" --state all --json state,url,mergedAt --limit 1)
+        echo "REPORT_BRANCH: $REPORT_BRANCH"
+        if [ -n "$REPORT_BRANCH" ]; then
+           PR_DATA=$(gh pr list --head "$REPORT_BRANCH" --state all --json state,url,mergedAt --limit 1)
            echo "PR_DATA bruto:"
            echo "$PR_DATA"
            STATE=$(echo "$PR_DATA" | jq -r '.[0].state')
            URL=$(echo "$PR_DATA" | jq -r '.[0].url')
            MERGED=$(echo "$PR_DATA" | jq -r '.[0].mergedAt')
-           
            echo "existing_url=$URL" >> "$GITHUB_OUTPUT"
            echo "pr_state=$STATE" >> "$GITHUB_OUTPUT"
-           
            if [ "$STATE" == "OPEN" ]; then
               echo "🟢 PR is OPEN."
               echo "status_code=OPEN_EXISTING" >> "$GITHUB_OUTPUT"
@@ -362,96 +343,28 @@ runs:
         fi
         echo "::endgroup::"
 
-    # BLOCK 5: PUBLISH
-    - id: prepare_files
-      if: steps.analyze_pr_status.outputs.status_code == 'NOT_FOUND'
-      shell: bash
-      env:
-        REPORT: ${{ inputs.report_file }}
-        HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-        SIGNATURE: ${{ env.CODE_SIGNATURE }}
-        CALLER_ID: ${{ inputs.caller_id }}
-        PR_NUM: ${{ github.event.pull_request.number }}
-        HEAD_REF: ${{ github.head_ref }}
-        USER_BODY: ${{ inputs.pr_body }}
-        CUSTOM_TEMPLATE: ${{ inputs.pr_template_path }}
-        DEFAULT_TEMPLATE: ${{ github.action_path }}/templates/pr-body-report.md
-      run: |
-        echo "::group::📝 Prep Files"
-        TEMP="/tmp/meta.md"
-        echo "" > "$TEMP"
-        echo "> **Content Signature:** $SIGNATURE" >> "$TEMP"
-        echo "> **Caller ID:** $CALLER_ID" >> "$TEMP"
-        echo "> **Source SHA:** $HEAD_SHA" >> "$TEMP"
-        echo "> **Data:** $(date -u)" >> "$TEMP"
-        echo "" >> "$TEMP"
-        cat "$REPORT" >> "$TEMP"
-        mv "$TEMP" "$REPORT"
-
-        TEMPLATE_SOURCE="$DEFAULT_TEMPLATE"
-        if [[ -n "$CUSTOM_TEMPLATE" && -f "$CUSTOM_TEMPLATE" ]]; then
-           TEMPLATE_SOURCE="$CUSTOM_TEMPLATE"
-        fi
-        echo "TEMPLATE_SOURCE: $TEMPLATE_SOURCE"
-
-        export USER_BODY PR_NUM HEAD_REF CALLER_ID SIGNATURE
-        PR_BODY_FILE="/tmp/pr_b_body.md"
-        envsubst < "$TEMPLATE_SOURCE" > "$PR_BODY_FILE"
-
-        echo "" >> "$PR_BODY_FILE"
-        echo "" >> "$PR_BODY_FILE"
-
-        echo "pr_body_file=$PR_BODY_FILE" >> "$GITHUB_OUTPUT"
-        echo "pr_body_file=$PR_BODY_FILE"
-        echo "::endgroup::"
-
     - id: publish
+      name: "🚀 Publishing"
       if: steps.analyze_pr_status.outputs.status_code == 'NOT_FOUND'
       shell: bash
       env:
         GH_TOKEN: ${{ inputs.token }}
         HEAD_REF: ${{ github.head_ref }}
-        PREFIX: ${{ inputs.report_branch_prefix }}
+        REPORT_BRANCH: ${{ steps.branch_convention.outputs.report_branch }}
         REPORT: ${{ inputs.report_file }}
         TITLE: ${{ inputs.pr_title }}
-        BODY_FILE: ${{ steps.prepare_files.outputs.pr_body_file }}
+        PR_TEMPLATE_PATH: ${{ inputs.pr_template_path }}
       run: |
-        echo "::group::🚀 Publishing"
-        REPORT_BRANCH="${PREFIX}/${HEAD_REF}"
-        git checkout "$HEAD_REF"
-        git checkout -B "$REPORT_BRANCH"
-        git add "$REPORT"
-        git commit -m "docs: automated report [skip ci]"
-        git push -f origin "$REPORT_BRANCH"
-        
-        if gh pr create --base "$HEAD_REF" --head "$REPORT_BRANCH" --title "$TITLE" --body-file "$BODY_FILE"; then
+        echo "::group::🚀 Publishing"      
+        if gh pr create --base "$HEAD_REF" --head "$REPORT_BRANCH" --title "$TITLE" --body-file "$PR_TEMPLATE_PATH"; then
            echo "✅ New PR created."
         else
            echo "ℹ️ PR creation skipped. Updating existing..."
         fi
-        
         PR_URL=$(gh pr view "$REPORT_BRANCH" --json url -q .url)
         echo "PR_URL: $PR_URL"
         if ! gh pr edit "$PR_URL" --body-file "$BODY_FILE"; then
           echo "🔴 Erro ao atualizar PR em $PR_URL com o arquivo $BODY_FILE" >&2
         fi
-        echo "pr_url=$PR_URL" >> "$GITHUB_OUTPUT"
-        echo "status=PUBLISHED" >> "$GITHUB_OUTPUT"
-        
-        echo "pr_url=$PR_URL"
-        echo "status=PUBLISHED"
+        echo "pr_url: $PR_URL"
         echo "::endgroup::"
-
-    # BLOCK 6: CONTROLLER
-    - id: controller
-      shell: bash
-      if: always()
-      env:
-        S3: ${{ steps.publish.outputs.status }}
-        URL: ${{ steps.publish.outputs.pr_url }}
-        URL_EXIST: ${{ steps.analyze_pr_status.outputs.existing_url }}
-      run: |
-        if [ -n "$S3" ]; then FINAL="$S3"; else FINAL="SKIPPED"; fi
-        if [ -n "$URL" ]; then FURL="$URL"; else FURL="$URL_EXIST"; fi
-        echo "status=$FINAL" >> "$GITHUB_OUTPUT"
-        echo "pr_url=$FURL" >> "$GITHUB_OUTPUT"
