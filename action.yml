@@ -1,4 +1,4 @@
-# Malnati/git-report-ops@v1.3.20
+# Malnati/git-report-ops@v1.3.21
 name: "Git Report Ops"
 description: "Engine de auditoria que assina o conteúdo, detecta renames e envia notificações padronizadas para Pull Requests."
 author: "Ricardo Malnati"
@@ -315,40 +315,41 @@ runs:
         GH_TOKEN: ${{ inputs.token }}
         COMMIT_SHA: ${{ steps.commit_report.outputs.commit_sha }}
         REPORT_BRANCH: ${{ steps.branch_convention.outputs.report_branch }}
+        HEAD_REF: ${{ github.head_ref }}
       run: |
         echo "::group::🔍 Analyzing Existing PR"
         echo "REPORT_BRANCH: $REPORT_BRANCH"
-        if [ -n "$REPORT_BRANCH" ]; then
-           PR_DATA=$(gh pr list --head "$REPORT_BRANCH" --state all --json state,url,mergedAt --limit 1)
-           echo "PR_DATA: $PR_DATA"
-           
-           STATE=$(echo "$PR_DATA" | jq -r '.[0].state')
-           URL=$(echo "$PR_DATA" | jq -r '.[0].url')
-           MERGED=$(echo "$PR_DATA" | jq -r '.[0].mergedAt')
-           
-           echo "state: $STATE" 
-           echo "url: $URL" 
-           echo "merged: $MERGED" 
-           
-           echo "existing_url=$URL" >> "$GITHUB_OUTPUT"
-           echo "pr_state=$STATE" >> "$GITHUB_OUTPUT"
-           if [ -z "$PR_DATA" ] || [ "$PR_DATA" = "[]" ] || [ "$PR_DATA" = "null" ]; then
-              echo "⚠️ No PR found for this branch."
-              echo "status_code=NOT_FOUND" >> "$GITHUB_OUTPUT"
-              echo "::endgroup::"
-           elif [ "$STATE" == "OPEN" ]; then
-              echo "🟢 PR is OPEN."
-              echo "status_code=OPEN_EXISTING" >> "$GITHUB_OUTPUT"
-           elif [ "$STATE" == "CLOSED" ] && [ "$MERGED" == "null" ]; then
-              echo "🔴 PR is CLOSED (Unmerged)."
-              echo "status_code=CLOSED_UNMERGED" >> "$GITHUB_OUTPUT"
-           else
-              echo "⚪ PR is Merged/Missing."
-              echo "status_code=PREVIOUSLY_MERGED" >> "$GITHUB_OUTPUT"
-           fi
+        echo "HEAD_REF: $HEAD_REF"
+        PR_DATA=$(gh pr list --base "$HEAD_REF" --state all --json headRefName,state,url,mergedAt)
+        echo "PR_DATA: $PR_DATA"
+        EXISTING=$(echo "$PR_DATA" | jq -r '.[] | select(.headRefName | startswith("ops/report/latest/")) | @base64' | head -n1)
+        echo "EXISTING: $EXISTING"
+        if [ -z "$EXISTING" ]; then
+          echo "⚠️ No existing audit PR for this base branch."
+          echo "status_code=NOT_FOUND" >> "$GITHUB_OUTPUT"
         else
-           echo "⚠️ Branch not found. Treating as new."
-           echo "status_code=NOT_FOUND" >> "$GITHUB_OUTPUT"
+          decode() { echo "$EXISTING" | base64 --decode; }
+          STATE=$(decode | jq -r '.state')
+          URL=$(decode | jq -r '.url')
+          HEAD=$(decode | jq -r '.headRefName')
+          MERGED=$(decode | jq -r '.mergedAt')
+          echo "existing_head: $HEAD"
+          echo "state: $STATE"
+          echo "url: $URL"
+          echo "merged: $MERGED"
+          echo "existing_url=$URL" >> "$GITHUB_OUTPUT"
+          echo "existing_head=$HEAD" >> "$GITHUB_OUTPUT"
+          echo "pr_state=$STATE" >> "$GITHUB_OUTPUT"
+          if [ "$STATE" = "OPEN" ]; then
+            echo "🟢 PR is OPEN."
+            echo "status_code=OPEN_EXISTING" >> "$GITHUB_OUTPUT"
+          elif [ "$STATE" = "CLOSED" ] && [ "$MERGED" = "null" ]; then
+            echo "🔴 PR is CLOSED (Unmerged)."
+            echo "status_code=CLOSED_UNMERGED" >> "$GITHUB_OUTPUT"
+          else
+            echo "⚪ PR is Merged/Missing."
+            echo "status_code=PREVIOUSLY_MERGED" >> "$GITHUB_OUTPUT"
+          fi
         fi
         echo "::endgroup::"
 
