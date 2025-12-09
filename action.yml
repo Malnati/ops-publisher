@@ -1,4 +1,4 @@
-# Malnati/git-report-ops@v1.3.19
+# Malnati/git-report-ops@v1.3.20
 name: "Git Report Ops"
 description: "Engine de auditoria que assina o conteúdo, detecta renames e envia notificações padronizadas para Pull Requests."
 author: "Ricardo Malnati"
@@ -332,7 +332,7 @@ runs:
            
            echo "existing_url=$URL" >> "$GITHUB_OUTPUT"
            echo "pr_state=$STATE" >> "$GITHUB_OUTPUT"
-           if [ -z "$PR_DATA" ] || [ "$PR_DATA" = "[]" ]; then
+           if [ -z "$PR_DATA" ] || [ "$PR_DATA" = "[]" ] || [ "$PR_DATA" = "null" ]; then
               echo "⚠️ No PR found for this branch."
               echo "status_code=NOT_FOUND" >> "$GITHUB_OUTPUT"
               echo "::endgroup::"
