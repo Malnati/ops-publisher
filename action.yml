@@ -25,8 +25,11 @@ inputs:
     default: "git-report-ops@users.noreply.github.com"
   pr_template_path:
     required: true
-    default: ""
-
+    default: "path/to/pr-template.md"
+  timeline_template_path:
+    required: true
+    default: "path/to/timeline-template.md"
+    
 runs:
   using: "composite"
   steps:
@@ -67,6 +70,32 @@ runs:
           echo "✅ [attached_file_path] Encontrado em '$ATTACHED_FILE_PATH'. Será usado como base do relatório publicado."
         fi
 
+        # pr_template_path (obrigatório)
+        if [ -z "$PR_TEMPLATE_PATH" ]; then
+          echo "❌  [pr_template_path] Não informado."
+          echo "   ➜ Defina 'pr_template_path' com o caminho de um template customizado para personalizar o corpo do PR."
+          exit 1
+        elif [ ! -f "$PR_TEMPLATE_PATH" ]; then
+          echo "❌ [pr_template_path] Arquivo '$PR_TEMPLATE_PATH' não encontrado."
+          echo "   ➜ Verifique o caminho informado em 'attached_file_path' e garanta que o arquivo é criado antes desta Action."
+          exit 1
+        else
+          echo "✅ [pr_template_path] Encontrado em '$PR_TEMPLATE_PATH'. Será usado para exibir a descrição da Pull Request."
+        fi
+
+        # timeline_template_path (obrigatório)
+        if [ -z "$TIMELINE_TEMPLATE_PATH" ]; then
+          echo "❌  [timeline_template_path] Não informado."
+          echo "   ➜ Defina 'timeline_template_path' com o caminho de um template customizado para personalizar o corpo do PR."
+          exit 1
+        elif [ ! -f "$TIMELINE_TEMPLATE_PATH" ]; then
+          echo "❌ [timeline_template_path] Arquivo '$TIMELINE_TEMPLATE_PATH' não encontrado."
+          echo "   ➜ Verifique o caminho informado em 'timeline_template_path' e garanta que o arquivo é criado antes desta Action."
+          exit 1
+        else
+          echo "✅ [timeline_template_path] Encontrado em '$TIMELINE_TEMPLATE_PATH'. Será usado para exibir a descrição da Pull Request."
+        fi
+        
         # report_branch_prefix (opcional)
         if [ -z "$REPORT_BRANCH_PREFIX" ]; then
           echo "ℹ️ [report_branch_prefix] Não informado. Branches de relatório serão criados sem prefixo dedicado, podendo conflitar com branches de desenvolvimento."
@@ -97,21 +126,6 @@ runs:
         fi
         git config user.name "git-report-ops-bot"
         git config user.email "$BOT_EMAIL"
-
-        # pr_template_path (obrigatório)
-        if [ -z "$PR_TEMPLATE_PATH" ]; then
-          echo "❌  [pr_template_path] Não informado."
-          echo "   ➜ Defina 'pr_template_path' com o caminho de um template customizado para personalizar o corpo do PR."
-          exit 1;
-        else
-          if [ -f "$PR_TEMPLATE_PATH" ]; then
-            echo "ℹ️ [pr_template_path] Template customizado encontrado em '$PR_TEMPLATE_PATH'."
-            echo "   ➜ Ele será usado por 'envsubst' para gerar o corpo do PR."
-          else
-            echo "⚠️ [pr_template_path] Caminho informado ('$PR_TEMPLATE_PATH'), mas arquivo não existe."
-            echo "   ➜ O template padrão será usado. Verifique o caminho ou inclua o arquivo no repositório."
-          fi
-        fi
 
         echo "✅ Input validation complete."
         echo "::endgroup::"
