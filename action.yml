@@ -1,4 +1,4 @@
-# Malnati/git-report-ops@v1.3.22
+# Malnati/git-report-ops@v1.3.23
 name: "Git Report Ops"
 description: "Engine de auditoria que assina o conteúdo, detecta renames e envia notificações padronizadas para Pull Requests."
 author: "Ricardo Malnati"
@@ -399,7 +399,7 @@ runs:
 
     - id: publish_pr
       name: "🚀 Publishing/Updating Pull Request"
-      if: steps.analyze_pr_status.outputs.status_code != 'PREVIOUSLY_MERGED' || steps.analyze_pr_status.outputs.status_code != 'CLOSED_UNMERGED'
+      if: ${{ steps.analyze_pr_status.outputs.status_code != 'PREVIOUSLY_MERGED' && steps.analyze_pr_status.outputs.status_code != 'CLOSED_UNMERGED' }}
       shell: bash
       env:
         GH_TOKEN: ${{ inputs.token }}
@@ -408,17 +408,33 @@ runs:
         REPORT: ${{ inputs.report_file }}
         TITLE: ${{ inputs.pr_title }}
         PR_TEMPLATE_PATH: ${{ inputs.pr_template_path }}
+        STATUS_CODE: ${{ steps.analyze_pr_status.outputs.status_code }}
       run: |
-        echo "::group::🚀 Publishing"      
-        if gh pr create --base "$HEAD_REF" --head "$REPORT_BRANCH" --title "$TITLE" --body-file "$PR_TEMPLATE_PATH"; then
-           echo "✅ New PR created."
+        echo "::group::🚀 Publishing"
+        echo "STATUS_CODE: $STATUS_CODE"
+        echo "HEAD_REF: $HEAD_REF"
+        echo "REPORT_BRANCH: $REPORT_BRANCH"
+        echo "PR_TEMPLATE_PATH: $PR_TEMPLATE_PATH"
+
+        if [ "$STATUS_CODE" = "NOT_FOUND" ]; then
+          echo "🔹 Nenhuma PR anterior encontrada. Criando nova PR..."
+          if gh pr create --base "$HEAD_REF" --head "$REPORT_BRANCH" --title "$TITLE" --body-file "$PR_TEMPLATE_PATH"; then
+            echo "✅ New PR created."
+          else
+            echo "🔴 Falha ao criar nova PR." >&2
+            exit 1
+          fi
+        elif [ "$STATUS_CODE" = "OPEN_EXISTING" ]; then
+          echo "🔹 PR existente aberta encontrada. Atualizando PR..."
+          PR_URL=$(gh pr view "$REPORT_BRANCH" --json url -q .url)
+          echo "PR_URL: $PR_URL"
+          if ! gh pr edit "$PR_URL" --body-file "$PR_TEMPLATE_PATH"; then
+            echo "🔴 Erro ao atualizar PR em $PR_URL com o arquivo $PR_TEMPLATE_PATH" >&2
+            exit 1
+          fi
+          echo "pr_url: $PR_URL"
         else
-           echo "ℹ️ PR creation skipped. Updating existing..."
+          echo "ℹ️ STATUS_CODE=$STATUS_CODE não requer create/edit."
         fi
-        PR_URL=$(gh pr view "$REPORT_BRANCH" --json url -q .url)
-        echo "PR_URL: $PR_URL"
-        if ! gh pr edit "$PR_URL" --body-file "$PR_TEMPLATE_PATH"; then
-          echo "🔴 Erro ao atualizar PR em $PR_URL com o arquivo $PR_TEMPLATE_PATH" >&2
-        fi
-        echo "pr_url: $PR_URL"
+
         echo "::endgroup::"
