@@ -1,5 +1,5 @@
-# Malnati/git-report-ops@v1.3.24
-name: "Git Report Ops"
+# Malnati/git-report-ops@v1.3.25
+name: "Git Pull Request Ops"
 description: "Engine de auditoria que assina o conteúdo, detecta renames e envia notificações padronizadas para Pull Requests."
 author: "Ricardo Malnati"
 
@@ -11,37 +11,25 @@ inputs:
   token:
     description: "GitHub token."
     required: true
-  report_file:
-    description: "Arquivo Markdown."
+  attached_file_path:
+    description: "Arquivo anexo ao repositório. (report.csv)"
     required: true
-  caller_id:
-    required: false
-    default: "unknown-workflow"
-  scan_extensions:
-    required: false
-    default: "ts|js|jsx|tsx|java|py|go|cs|php|sh|json|yaml|yml"
-  scan_exclude:
-    required: false
-    default: "node_modules|dist|build|.git|.github"
-  report_branch_prefix:
+  branch_convention_prefix:
     required: false
     default: "ops/files"
   pr_title:
     required: false
     default: "🛡️ Automated Pull Request"
-  pr_body:
-    required: false
-    default: "Relatório de auditoria."
   bot_email:
     required: false
-    default: "git-report-ops@users.noreply.github.com"
+    default: "git-pr-ops@users.noreply.github.com"
   pr_template_path:
     required: true
-    default: ""
-  notification_id:
-    required: false
-    default: ""
-
+    description: "Arquivo anexo ao repositório. (pr-template.md)"
+  timeline_template_path:
+    required: true
+    description: "Arquivo anexo ao repositório. (timeline-template.md)"
+    
 runs:
   using: "composite"
   steps:
@@ -50,16 +38,14 @@ runs:
       shell: bash
       env:
         TOKEN: ${{ inputs.token }}
-        REPORT: ${{ inputs.report_file }}
+        ATTACHED_FILE_PATH: ${{ inputs.attached_file_path }}
         CALLER_ID: ${{ inputs.caller_id }}
-        SCAN_EXTENSIONS: ${{ inputs.scan_extensions }}
-        SCAN_EXCLUDE: ${{ inputs.scan_exclude }}
-        REPORT_BRANCH_PREFIX: ${{ inputs.report_branch_prefix }}
+        BRANCH_CONVENTION_PREFIX: ${{ inputs.branch_convention_prefix }}
         PR_TITLE: ${{ inputs.pr_title }}
-        PR_BODY: ${{ inputs.pr_body }}
         BOT_EMAIL: ${{ inputs.bot_email }}
         PR_TEMPLATE_PATH: ${{ inputs.pr_template_path }}
-        NOTIFICATION_ID: ${{ inputs.notification_id }}
+        TIMELINE_TEMPLATE_PATH: ${{ inputs.timeline_template_path }}
+
       run: |
         echo "::group::🔧 Setup & Input Validation"
 
@@ -72,125 +58,77 @@ runs:
           echo "✅ [token] Informado. A Action poderá criar/atualizar PRs e publicar comentários."
         fi
 
-        # report_file (obrigatório)
-        if [ -z "$REPORT" ]; then
-          echo "❌ [report_file] Caminho não informado. A Action precisa de um arquivo Markdown para anexar ao PR."
-          echo "   ➜ Gere o relatório no job anterior e passe o caminho em 'report_file' (ex.: 'reports/pmd-report.md')."
+        # attached_file_path (obrigatório)
+        if [ -z "$ATTACHED_FILE_PATH" ]; then
+          echo "❌ [attached_file_path] Caminho não informado. A Action precisa de um arquivo para anexar ao PR."
+          echo "   ➜ Gere o relatório no job anterior e passe o caminho em 'attached_file_path' (ex.: 'reports/pmd-report.md')."
           exit 1
-        elif [ ! -f "$REPORT" ]; then
-          echo "❌ [report_file] Arquivo '$REPORT' não encontrado."
-          echo "   ➜ Verifique o caminho informado em 'report_file' e garanta que o arquivo é criado antes desta Action."
+        elif [ ! -f "$ATTACHED_FILE_PATH" ]; then
+          echo "❌ [attached_file_path] Arquivo '$ATTACHED_FILE_PATH' não encontrado."
+          echo "   ➜ Verifique o caminho informado em 'attached_file_path' e garanta que o arquivo é criado antes desta Action."
           exit 1
         else
-          echo "✅ [report_file] Encontrado em '$REPORT'. Será usado como base do relatório publicado."
+          echo "✅ [attached_file_path] Encontrado em '$ATTACHED_FILE_PATH'. Será usado como base do arquivo publicado."
         fi
 
-        # caller_id (opcional)
-        if [ -z "$CALLER_ID" ] || [ "$CALLER_ID" = "unknown-workflow" ]; then
-          echo "ℹ️ [caller_id] Não informado. Será usado 'unknown-workflow' como identificador do workflow de origem."
-          echo "   ➜ Defina 'caller_id' (ex.: 'pmd-audit', 'eslint-audit') para rastrear qual workflow/job gerou o relatório."
+        # pr_template_path (obrigatório)
+        if [ -z "$PR_TEMPLATE_PATH" ]; then
+          echo "❌  [pr_template_path] Não informado."
+          echo "   ➜ Defina 'pr_template_path' com o caminho de um template customizado para personalizar o corpo do PR."
+          exit 1
+        elif [ ! -f "$PR_TEMPLATE_PATH" ]; then
+          echo "❌ [pr_template_path] Arquivo '$PR_TEMPLATE_PATH' não encontrado."
+          echo "   ➜ Verifique o caminho informado em 'attached_file_path' e garanta que o arquivo é criado antes desta Action."
+          exit 1
         else
-          echo "✅ [caller_id] Definido como '$CALLER_ID'. Será incluído na assinatura/meta do relatório e nas notificações."
+          echo "✅ [pr_template_path] Encontrado em '$PR_TEMPLATE_PATH'. Será usado para exibir a descrição da Pull Request."
         fi
 
-        # scan_extensions (opcional)
-        if [ -z "$SCAN_EXTENSIONS" ]; then
-          echo "ℹ️ [scan_extensions] Não informado. A assinatura poderá considerar todos os arquivos, o que pode aumentar o custo da varredura."
-          echo "   ➜ Recomenda-se definir uma lista como 'ts|js|jsx|tsx|java|py|go|cs|php|sh|json|yaml|yml' para focar em código-fonte."
+        # timeline_template_path (obrigatório)
+        if [ -z "$TIMELINE_TEMPLATE_PATH" ]; then
+          echo "❌  [timeline_template_path] Não informado."
+          echo "   ➜ Defina 'timeline_template_path' com o caminho de um template customizado para personalizar a mensqgem do timeline na PR."
+          exit 1
+        elif [ ! -f "$TIMELINE_TEMPLATE_PATH" ]; then
+          echo "❌ [timeline_template_path] Arquivo '$TIMELINE_TEMPLATE_PATH' não encontrado."
+          echo "   ➜ Verifique o caminho informado em 'timeline_template_path' e garanta que o arquivo é criado antes desta Action."
+          exit 1
         else
-          echo "ℹ️ [scan_extensions] Usando lista: '$SCAN_EXTENSIONS'."
-          echo "   ➜ Ajuste 'scan_extensions' para incluir/remover extensões que devem impactar a assinatura de conteúdo."
+          echo "✅ [timeline_template_path] Encontrado em '$TIMELINE_TEMPLATE_PATH'. Será usado para exibir a mensagem no timeline da Pull Request."
         fi
-
-        # scan_exclude (opcional)
-        if [ -z "$SCAN_EXCLUDE" ]; then
-          echo "ℹ️ [scan_exclude] Não informado. Nenhum diretório será excluído da análise, o que pode deixá-la mais lenta."
-          echo "   ➜ Defina 'scan_exclude' (ex.: 'node_modules|dist|build|.git|.github') para ignorar pastas de build/dependências."
-        else
-          echo "ℹ️ [scan_exclude] Usando padrão de exclusão: '$SCAN_EXCLUDE'."
-          echo "   ➜ Ajuste este valor se quiser incluir ou remover diretórios ignorados na assinatura."
-        fi
-
-        # report_branch_prefix (opcional)
-        if [ -z "$REPORT_BRANCH_PREFIX" ]; then
-          echo "ℹ️ [report_branch_prefix] Não informado. Branches de relatório serão criados sem prefixo dedicado, podendo conflitar com branches de desenvolvimento."
+        
+        # branch_convention_prefix (opcional)
+        if [ -z "$BRANCH_CONVENTION_PREFIX" ]; then
+          echo "ℹ️ [branch_convention_prefix] Não informado. Branches de relatório serão criados sem prefixo dedicado, podendo conflitar com branches de desenvolvimento."
           echo "   ➜ Defina um prefixo (ex.: 'audit/report') para isolar branches de relatório: '<prefix>/<branch_origem>'."
         else
-          echo "ℹ️ [report_branch_prefix] Usando prefixo: '$REPORT_BRANCH_PREFIX'."
-          echo "   ➜ Os branches de relatório serão criados como '${REPORT_BRANCH_PREFIX}/<branch_de_origem>'."
+          echo "ℹ️ [branch_convention_prefix] Usando prefixo: '$BRANCH_CONVENTION_PREFIX'."
+          echo "   ➜ Os branches de relatório serão criados como '${BRANCH_CONVENTION_PREFIX}/<branch_de_origem>'."
         fi
 
         # pr_title (opcional)
         if [ -z "$PR_TITLE" ]; then
           echo "ℹ️ [pr_title] Não informado. O PR poderá ser criado sem título claro, dificultando a leitura na lista de PRs."
-          echo "   ➜ Defina 'pr_title' com um título descritivo (ex.: '🛡️ Automated Audit Report')."
+          echo "   ➜ Defina 'pr_title' com um título descritivo (ex.: '🛡️ Automated Pull Request')."
         else
           echo "ℹ️ [pr_title] Título configurado como: '$PR_TITLE'."
           echo "   ➜ Este valor será usado como título dos PRs de relatório."
         fi
 
-        # pr_body (opcional)
-        if [ -z "$PR_BODY" ]; then
-          echo "ℹ️ [pr_body] Não informado. Apenas o conteúdo gerado pelo template será usado no corpo do PR."
-          echo "   ➜ Defina 'pr_body' se quiser incluir um texto fixo adicional (ex.: instruções para revisores)."
-        else
-          echo "ℹ️ [pr_body] Texto base informado. Ele será injetado no template do corpo do PR."
-        fi
-
         # bot_email (opcional, mas crítico para loop protection)
         if [ -z "$BOT_EMAIL" ]; then
           echo "ℹ️ [bot_email] Não informado. O git usará o email padrão do ambiente e isso pode quebrar a proteção de loop baseada no autor."
-          echo "   ➜ Defina 'bot_email' (ex.: 'git-report-ops@users.noreply.github.com') para: "
+          echo "   ➜ Defina 'bot_email' (ex.: 'git-pr-ops@users.noreply.github.com') para: "
           echo "      - identificar os commits do bot; "
           echo "      - permitir que o circuito anti-loop funcione corretamente."
         else
           echo "ℹ️ [bot_email] Usando: '$BOT_EMAIL'."
           echo "   ➜ Este email será configurado como autor dos commits e usado na verificação de loops."
         fi
-        git config user.name "git-report-ops-bot"
+        git config user.name "git-pr-ops-bot"
         git config user.email "$BOT_EMAIL"
 
-        # pr_template_path (obrigatório)
-        if [ -z "$PR_TEMPLATE_PATH" ]; then
-          echo "❌  [pr_template_path] Não informado."
-          echo "   ➜ Defina 'pr_template_path' com o caminho de um template customizado para personalizar o corpo do PR."
-          exit 1;
-        else
-          if [ -f "$PR_TEMPLATE_PATH" ]; then
-            echo "ℹ️ [pr_template_path] Template customizado encontrado em '$PR_TEMPLATE_PATH'."
-            echo "   ➜ Ele será usado por 'envsubst' para gerar o corpo do PR."
-          else
-            echo "⚠️ [pr_template_path] Caminho informado ('$PR_TEMPLATE_PATH'), mas arquivo não existe."
-            echo "   ➜ O template padrão será usado. Verifique o caminho ou inclua o arquivo no repositório."
-          fi
-        fi
-
-        # notification_id (opcional)
-        if [ -z "$NOTIFICATION_ID" ]; then
-          echo "ℹ️ [notification_id] Não informado. Será gerado um identificador derivado de 'caller_id'."
-          echo "   ➜ Use 'notification_id' se quiser controlar manualmente o agrupamento de comentários (ex.: evitar sobrescrever mensagens entre execuções diferentes)."
-        else
-          echo "ℹ️ [notification_id] Definido como: '$NOTIFICATION_ID'."
-          echo "   ➜ Este valor será usado como chave de agrupamento para comentários na PR."
-        fi
-
         echo "✅ Input validation complete."
-        echo "::endgroup::"
-
-    - id: step_resolve_ids
-      name: "ℹ Resolve IDs"
-      shell: bash
-      env:
-        INPUT_ID: ${{ inputs.notification_id }}
-        CALLER: ${{ inputs.caller_id }}
-      run: |
-        FINAL_ID="git-report-ops-$CALLER";
-        if [ -n "$INPUT_ID" ]; 
-            then FINAL_ID="$INPUT_ID";       
-        fi
-        echo "notify_id=$FINAL_ID" >> "$GITHUB_OUTPUT"
-        echo "inputs.caller_id: $FINAL_ID"
-        echo "✅ notify_id: $FINAL_ID"
         echo "::endgroup::"
 
     - id: branch_convention
@@ -204,26 +142,26 @@ runs:
         git fetch --all --prune
         LATEST_SHA="$(git rev-list --all -n 1)"
         CUSTOM_SUFFIX="${LATEST_SHA: -10}"
-        PREFIX="ops/report/latest/${CUSTOM_SUFFIX}"
+        PREFIX="ops/latest/${CUSTOM_SUFFIX}"
         echo "latest_sha: $LATEST_SHA"
         echo "custom_suffix: $CUSTOM_SUFFIX"
-        echo "report_branch_prefix: $PREFIX"
-        REPORT_BRANCH="${PREFIX}/${HEAD_REF}"
-        echo "report_branch: $REPORT_BRANCH"
-        if [ "$HEAD_REF" = "$REPORT_BRANCH" ]; then
-          echo "✅ Já está na própria report branch: $REPORT_BRANCH. Nada a fazer."
-          echo "report_branch=$REPORT_BRANCH" >> "$GITHUB_OUTPUT"
+        echo "branch_convention_prefix: $PREFIX"
+        BRANCH_CONVENTION="${PREFIX}/${HEAD_REF}"
+        echo "branch_convention: $BRANCH_CONVENTION"
+        if [ "$HEAD_REF" = "$BRANCH_CONVENTION" ]; then
+          echo "✅ Já está na própria branch: $BRANCH_CONVENTION. Nada a fazer."
+          echo "branch_convention=$BRANCH_CONVENTION" >> "$GITHUB_OUTPUT"
           echo "::endgroup::"
           exit 0
         fi
-        if git show-ref --verify --quiet "refs/heads/$REPORT_BRANCH"; then
-          echo "⚠️ Branch já existe: $REPORT_BRANCH"
+        if git show-ref --verify --quiet "refs/heads/$BRANCH_CONVENTION"; then
+          echo "⚠️ Branch já existe: $BRANCH_CONVENTION"
         else
           git checkout "$HEAD_REF"
-          git checkout -b "$REPORT_BRANCH"
-          echo "✅ Report branch criada: $REPORT_BRANCH"
+          git checkout -b "$BRANCH_CONVENTION"
+          echo "✅ Branch criada: $BRANCH_CONVENTION"
         fi
-        echo "report_branch=$REPORT_BRANCH" >> "$GITHUB_OUTPUT"
+        echo "branch_convention=$BRANCH_CONVENTION" >> "$GITHUB_OUTPUT"
         echo "::endgroup::"
 
     - id: latest_commit_verify
@@ -261,22 +199,21 @@ runs:
         fi
         echo "::endgroup::"
 
-    # Faz o commit do arquivo informado nesta mesma report_branch 
-    - id: commit_report
-      name: "📝 Commit Report File"
+    - id: commit_attached_file
+      name: "📝 Commit File"
       shell: bash
       env:
-        REPORT: ${{ inputs.report_file }}
-        REPORT_BRANCH: ${{ steps.branch_convention.outputs.report_branch }}
+        ATTACHED_FILE_PATH: ${{ inputs.attached_file_path }}
+        BRANCH_CONVENTION: ${{ steps.branch_convention.outputs.branch_convention }}
         BOT_EMAIL: ${{ inputs.bot_email }}
         BOT_NAME: ${{ inputs.bot_name }}
       run: |
-        echo "::group::📝 Commit report file"
-        echo "report_branch: $REPORT_BRANCH"
-        echo "report_file: $REPORT"
-        git checkout "$REPORT_BRANCH"
-        if [ ! -f "$REPORT" ]; then
-          echo "❌ Arquivo de relatório não encontrado: $REPORT"
+        echo "::group::📝 Commit file"
+        echo "branch_convention: $BRANCH_CONVENTION"
+        echo "attached_file_path: $ATTACHED_FILE_PATH"
+        git checkout "$BRANCH_CONVENTION"
+        if [ ! -f "$ATTACHED_FILE_PATH" ]; then
+          echo "❌ Arquivo de relatório não encontrado: $ATTACHED_FILE_PATH"
           echo "::endgroup::"
           exit 1
         fi
@@ -284,41 +221,30 @@ runs:
         if [ -n "${BOT_NAME:-}" ]; then
           git config user.name "$BOT_NAME"
         fi
-        git add "$REPORT"
+        git add "$ATTACHED_FILE_PATH"
         if git diff --cached --quiet; then
-          echo "⚠️ Nenhuma alteração para commitar em $REPORT"
+          echo "⚠️ Nenhuma alteração para commitar em $ATTACHED_FILE_PATH"
           echo "::endgroup::"
           exit 0
         fi
-        git commit -m "chore(report): update audit report"
-        git push origin "$REPORT_BRANCH"
+        git commit -m "chore(attach): update attached file"
+        git push origin "$BRANCH_CONVENTION"
         COMMIT_SHA="$(git rev-parse HEAD)"
         echo "commit_sha=$COMMIT_SHA" >> "$GITHUB_OUTPUT"
-        echo "✅ Report commit realizado em $REPORT_BRANCH (commit $COMMIT_SHA)"
+        echo "✅ Attached file commit realizado em $BRANCH_CONVENTION (commit $COMMIT_SHA)"
         echo "::endgroup::"
-
-    - id: notify_branch_convention
-      name: "🔔 Notify Branch Convention"
-      uses: Malnati/pr-comment@v8.0.0
-      env:
-        REPORT: ${{ inputs.report_file }}
-        BODY_MESSAGE: "A branch do arquivo ${{ inputs.report_file }} é ${{ steps.branch_convention.outputs.report_branch }} e o commit referente a inclusão deste arquivo é ${{steps.commit_report.outputs.commit_sha}}"
-      with:
-        token: ${{ inputs.token }}
-        pr_number: ${{ github.event.pull_request.number }}
-        use_raw_body: "true"
 
     - id: analyze_pr_status
       name: "🔍 Análise de PR Existente"
       shell: bash
       env:
         GH_TOKEN: ${{ inputs.token }}
-        COMMIT_SHA: ${{ steps.commit_report.outputs.commit_sha }}
-        REPORT_BRANCH: ${{ steps.branch_convention.outputs.report_branch }}
+        COMMIT_SHA: ${{ steps.commit_attached_file.outputs.commit_sha }}
+        BRANCH_CONVENTION: ${{ steps.branch_convention.outputs.branch_convention }}
         HEAD_REF: ${{ github.head_ref }}
       run: |
         echo "::group::🔍 Analyzing Existing PR"
-        echo "REPORT_BRANCH: $REPORT_BRANCH"
+        echo "BRANCH_CONVENTION: $BRANCH_CONVENTION"
         echo "HEAD_REF: $HEAD_REF"
 
         PR_DATA=$(gh pr list --base "$HEAD_REF" --state all --json headRefName,state,url,mergedAt)
@@ -327,7 +253,7 @@ runs:
         echo "Listing PR entries:"
         echo "$PR_DATA" | jq -r '.[] | " - headRefName=\(.headRefName) state=\(.state) url=\(.url) mergedAt=\(.mergedAt)"'
 
-        FILTERED=$(echo "$PR_DATA" | jq -r '.[] | select(.headRefName | startswith("ops/report/latest/")) | @base64')
+        FILTERED=$(echo "$PR_DATA" | jq -r '.[] | select(.headRefName | startswith("ops/latest/")) | @base64')
         echo "Filtered candidates (base64):"
         echo "$FILTERED" | nl -ba
 
@@ -404,8 +330,7 @@ runs:
       env:
         GH_TOKEN: ${{ inputs.token }}
         HEAD_REF: ${{ github.head_ref }}
-        REPORT_BRANCH: ${{ steps.branch_convention.outputs.report_branch }}
-        REPORT: ${{ inputs.report_file }}
+        BRANCH_CONVENTION: ${{ steps.branch_convention.outputs.branch_convention }}
         TITLE: ${{ inputs.pr_title }}
         PR_TEMPLATE_PATH: ${{ inputs.pr_template_path }}
         STATUS_CODE: ${{ steps.analyze_pr_status.outputs.status_code }}
@@ -415,12 +340,12 @@ runs:
         echo "::group::🚀 Publishing"
         echo "STATUS_CODE: $STATUS_CODE"
         echo "HEAD_REF: $HEAD_REF"
-        echo "REPORT_BRANCH: $REPORT_BRANCH"
+        echo "BRANCH_CONVENTION: $BRANCH_CONVENTION"
         echo "PR_TEMPLATE_PATH: $PR_TEMPLATE_PATH"
 
         if [ "$STATUS_CODE" = "NOT_FOUND" ]; then
           echo "🔹 Nenhuma PR anterior encontrada. Criando nova PR..."
-          if gh pr create --base "$HEAD_REF" --head "$REPORT_BRANCH" --title "$TITLE" --body-file "$PR_TEMPLATE_PATH"; then
+          if gh pr create --base "$HEAD_REF" --head "$BRANCH_CONVENTION" --title "$TITLE" --body-file "$PR_TEMPLATE_PATH"; then
             echo "✅ New PR created."
           else
             echo "🔴 Falha ao criar nova PR." >&2
@@ -444,3 +369,22 @@ runs:
         fi
 
         echo "::endgroup::"
+
+
+    - id: timeline_notification
+      name: "🔔 Notify over PR Timeline"
+      uses: Malnati/pr-comment@v8.0.0
+      env:
+        ATTACHED_FILE_PATH: ${{ inputs.attached_file_path }}
+        EXISTING_URL: ${{ steps.analyze_pr_status.outputs.existing_url }}
+      with:
+        token: ${{ inputs.token }}
+        template_path: ${{ inputs.timeline_template_path }}
+        pr_number: ${{ github.event.pull_request.number }}
+        variables: |
+            {
+              "ATTACHED_FILE_PATH": "${ATTACHED_FILE_PATH}",
+              "BRANCH_CONVENTION": "${{ steps.branch_convention.outputs.branch_convention }}",
+              "COMMIT_SHA": "${{steps.commit_attached_file.outputs.commit_sha}}",
+              "PR_URL": ${EXISTING_URL}
+            }
