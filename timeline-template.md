@@ -1,1 +1,11 @@
-Uma branch ${BRANCH_CONVENTION} foi criada para acomodar o arquivo ${ATTACHED_FILE_PATH} e o commit referente a inclusão deste arquivo é ${COMMIT_SHA}"
+<!-- timeline-template.md -->
+
+"A branch do arquivo ${REPORT_FILE} é ${REPORT_BRANCH} e o commit referente a inclusão deste arquivo é ${COMMIT_SHA}"
+
+> [!TIP]
+> Pode-se modificar esta mensagem criando-se um arquivo de template para isto.
+
+---
+<div align="right">
+  <sub>Processado por <b>Git Report Ops</b></sub>
+</div>
