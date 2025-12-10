@@ -1,4 +1,4 @@
-# Malnati/git-report-ops@v1.3.27
+# Malnati/git-report-ops@v1.3.28
 name: "Git Pull Request Ops"
 description: "Engine de auditoria que assina o conteúdo, detecta renames e envia notificações padronizadas para Pull Requests."
 author: "Ricardo Malnati"
@@ -130,15 +130,26 @@ runs:
 
         echo "✅ Input validation complete."
         echo "::endgroup::"
-
+        
     - id: branch_convention
       name: "🪾 Branch Convention"
       shell: bash
       env:
         HEAD_REF: ${{ github.head_ref }}
       run: |
+        set -euo pipefail
         echo "::group::🪾 Create branch due to it does not exist yet;"
-        echo "head_ref: $HEAD_REF"
+        echo "head_ref (original): $HEAD_REF"
+
+        if [ -z "$HEAD_REF" ]; then
+          HEAD_REF="$(git rev-parse --abbrev-ref HEAD || true)"
+          echo "head_ref (fallback rev-parse): $HEAD_REF"
+          if [ "$HEAD_REF" = "HEAD" ] || [ -z "$HEAD_REF" ]; then
+            HEAD_REF="detached-head"
+            echo "head_ref (fallback detached): $HEAD_REF"
+          fi
+        fi
+
         git fetch --all --prune
         LATEST_SHA="$(git rev-list --all -n 1)"
         CUSTOM_SUFFIX="${LATEST_SHA: -10}"
@@ -148,19 +159,26 @@ runs:
         echo "branch_convention_prefix: $PREFIX"
         BRANCH_CONVENTION="${PREFIX}/${HEAD_REF}"
         echo "branch_convention: $BRANCH_CONVENTION"
+
         if [ "$HEAD_REF" = "$BRANCH_CONVENTION" ]; then
           echo "✅ Já está na própria branch: $BRANCH_CONVENTION. Nada a fazer."
           echo "branch_convention=$BRANCH_CONVENTION" >> "$GITHUB_OUTPUT"
           echo "::endgroup::"
           exit 0
         fi
+
         if git show-ref --verify --quiet "refs/heads/$BRANCH_CONVENTION"; then
           echo "⚠️ Branch já existe: $BRANCH_CONVENTION"
         else
-          git checkout "$HEAD_REF"
+          if git show-ref --verify --quiet "refs/heads/$HEAD_REF"; then
+            git checkout "$HEAD_REF"
+          else
+            echo "ℹ️ HEAD_REF '$HEAD_REF' não encontrado como branch. Usando HEAD atual para criar a branch de relatório."
+          fi
           git checkout -b "$BRANCH_CONVENTION"
           echo "✅ Branch criada: $BRANCH_CONVENTION"
         fi
+
         echo "branch_convention=$BRANCH_CONVENTION" >> "$GITHUB_OUTPUT"
         echo "::endgroup::"
 
