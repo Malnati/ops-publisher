@@ -1,4 +1,4 @@
-# Malnati/git-report-ops@v1.3.28
+# Malnati/git-report-ops@v1.3.29
 name: "Git Pull Request Ops"
 description: "Engine de auditoria que assina o conteúdo, detecta renames e envia notificações padronizadas para Pull Requests."
 author: "Ricardo Malnati"
@@ -263,9 +263,21 @@ runs:
       run: |
         echo "::group::🔍 Analyzing Existing PR"
         echo "BRANCH_CONVENTION: $BRANCH_CONVENTION"
-        echo "HEAD_REF: $HEAD_REF"
+        echo "HEAD_REF (original): ${HEAD_REF:-}"
 
-        PR_DATA=$(gh pr list --base "$HEAD_REF" --state all --json headRefName,state,url,mergedAt)
+        BASE_REF="$HEAD_REF"
+        if [ -z "$BASE_REF" ]; then
+          BASE_REF="$(git rev-parse --abbrev-ref HEAD || true)"
+          echo "HEAD_REF fallback (rev-parse): $BASE_REF"
+          if [ "$BASE_REF" = "HEAD" ] || [ -z "$BASE_REF" ]; then
+            BASE_REF="detached-head"
+            echo "HEAD_REF fallback (detached): $BASE_REF"
+          fi
+        fi
+
+        echo "Using BASE_REF: $BASE_REF"
+
+        PR_DATA=$(gh pr list --base "$BASE_REF" --state all --json headRefName,state,url,mergedAt)
         echo "PR_DATA raw: $PR_DATA"
 
         echo "Listing PR entries:"
@@ -340,7 +352,7 @@ runs:
         fi
 
         echo "::endgroup::"
-
+        
     - id: publish_pr
       name: "🚀 Publishing/Updating Pull Request"
       if: ${{ steps.analyze_pr_status.outputs.status_code != 'PREVIOUSLY_MERGED' && steps.analyze_pr_status.outputs.status_code != 'CLOSED_UNMERGED' }}
