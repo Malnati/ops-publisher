@@ -1,4 +1,4 @@
-# Malnati/git-report-ops@v1.3.33
+# Malnati/git-report-ops@v1.3.34
 name: "Git Pull Request Ops"
 description: "Engine de auditoria que assina o conteúdo, detecta renames e envia notificações padronizadas para Pull Requests."
 author: "Ricardo Malnati"
@@ -367,14 +367,24 @@ runs:
         echo "BRANCH_CONVENTION: $BRANCH_CONVENTION"
         echo "PR_TEMPLATE_PATH: $PR_TEMPLATE_PATH"
 
+        PR_URL=""
+
         if [ "$STATUS_CODE" = "NOT_FOUND" ]; then
           echo "🔹 Nenhuma PR anterior encontrada. Criando nova PR..."
-          if gh pr create --base "$HEAD_REF" --head "$BRANCH_CONVENTION" --title "$TITLE" --body-file "$PR_TEMPLATE_PATH"; then
-            echo "✅ New PR created."
-          else
-            echo "🔴 Falha ao criar nova PR." >&2
+          PR_URL="$(gh pr create \
+            --base "$HEAD_REF" \
+            --head "$BRANCH_CONVENTION" \
+            --title "$TITLE" \
+            --body-file "$PR_TEMPLATE_PATH" \
+            --json url \
+            --jq '.url')"
+          if [ -z "$PR_URL" ]; then
+            echo "🔴 Falha ao criar nova PR ou obter URL." >&2
             exit 1
           fi
+          echo "PR_URL: $PR_URL"
+          echo "pr_url=$PR_URL" >> "$GITHUB_OUTPUT"
+          echo "✅ New PR created."
         elif [ "$STATUS_CODE" = "OPEN_EXISTING" ]; then
           echo "🔹 PR existente aberta encontrada. Atualizando PR..."
           echo "EXISTING_HEAD: $EXISTING_HEAD"
@@ -387,7 +397,8 @@ runs:
             echo "🔴 Erro ao atualizar PR em $PR_URL com o arquivo $PR_TEMPLATE_PATH" >&2
             exit 1
           fi
-          echo "pr_url: $PR_URL"
+          echo "pr_url=$PR_URL" >> "$GITHUB_OUTPUT"
+          echo "pr_state=OPEN" >> "$GITHUB_OUTPUT"
         else
           echo "ℹ️ STATUS_CODE=$STATUS_CODE não requer create/edit."
         fi
