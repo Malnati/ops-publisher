@@ -1,4 +1,4 @@
-# Malnati/git-report-ops@v1.3.32
+# Malnati/git-report-ops@v1.3.33
 name: "Git Pull Request Ops"
 description: "Engine de auditoria que assina o conteúdo, detecta renames e envia notificações padronizadas para Pull Requests."
 author: "Ricardo Malnati"
@@ -129,6 +129,7 @@ runs:
       shell: bash
       env:
         HEAD_REF: ${{ github.head_ref }}
+        BRANCH_CONVENTION_PREFIX: ${{ inputs.branch_convention_prefix }}
       run: |
         set -euo pipefail
         echo "::group::🪾 Create branch due to it does not exist yet;"
@@ -146,7 +147,7 @@ runs:
         git fetch --all --prune
         LATEST_SHA="$(git rev-list --all -n 1)"
         CUSTOM_SUFFIX="${LATEST_SHA: -10}"
-        PREFIX="ops/latest/${CUSTOM_SUFFIX}"
+        PREFIX="${BRANCH_CONVENTION_PREFIX}/${CUSTOM_SUFFIX}"
         echo "latest_sha: $LATEST_SHA"
         echo "custom_suffix: $CUSTOM_SUFFIX"
         echo "branch_convention_prefix: $PREFIX"
