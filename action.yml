@@ -1,5 +1,4 @@
-# Malnati/git-report-ops@v1.3.30
-# action.yml
+# Malnati/git-report-ops@v1.3.31
 name: "Git Pull Request Ops"
 description: "Engine de auditoria que assina o conteúdo, detecta renames e envia notificações padronizadas para Pull Requests."
 author: "Ricardo Malnati"
@@ -393,17 +392,27 @@ runs:
         fi
 
         echo "::endgroup::"
-
-    - id: timeline_notification
-      name: "🔔 Notify over PR Timeline"
-      uses: Malnati/pr-comment@v8.0.0
+        
+    - name: Render template
+      id: render_timeline
+      uses: Malnati/template-render@v1.0.0
       env:
         ATTACHED_FILE_PATH: ${{ inputs.attached_file_path }}
         PR_URL: ${{ steps.analyze_pr_status.outputs.existing_url }}
         BRANCH_CONVENTION: ${{ steps.branch_convention.outputs.branch_convention }}
         COMMIT_SHA: ${{ steps.commit_attached_file.outputs.commit_sha }}
       with:
+        template: ${{ inputs.timeline_template_path }}
+        output: /tmp/hardcode-timeline.md
+          
+    - id: timeline_notification
+      name: "🔔 Notify over PR Timeline"
+      uses: Malnati/pr-comment@v8.0.0
+      env:
+        BODY_MESSAGE: ${{ steps.render_timeline.outputs.body }}
+      with:
         token: ${{ inputs.token }}
-        template_path: ${{ inputs.timeline_template_path }}
         pr_number: ${{ github.event.pull_request.number || github.event.issue.number }}
+        use_raw_body: "true"
+        template_path: ""
         message_id: git-report-ops
