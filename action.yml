@@ -1,4 +1,5 @@
-# Malnati/git-report-ops@v1.3.29
+# Malnati/git-report-ops@v1.3.30
+# action.yml
 name: "Git Pull Request Ops"
 description: "Engine de auditoria que assina o conteúdo, detecta renames e envia notificações padronizadas para Pull Requests."
 author: "Ricardo Malnati"
@@ -29,7 +30,7 @@ inputs:
   timeline_template_path:
     required: true
     description: "Arquivo anexo ao repositório. (timeline-template.md)"
-    
+
 runs:
   using: "composite"
   steps:
@@ -45,11 +46,9 @@ runs:
         BOT_EMAIL: ${{ inputs.bot_email }}
         PR_TEMPLATE_PATH: ${{ inputs.pr_template_path }}
         TIMELINE_TEMPLATE_PATH: ${{ inputs.timeline_template_path }}
-
       run: |
         echo "::group::🔧 Setup & Input Validation"
 
-        # token (obrigatório)
         if [ -z "$TOKEN" ]; then
           echo "❌ [token] Obrigatório e não informado. Sem este token a Action não consegue chamar a API do GitHub (gh CLI, criação/edição de PR e comentários)."
           echo "   ➜ Defina 'token' com 'secrets.GITHUB_TOKEN' ou um PAT com permissões de leitura/escrita em PRs."
@@ -58,7 +57,6 @@ runs:
           echo "✅ [token] Informado. A Action poderá criar/atualizar PRs e publicar comentários."
         fi
 
-        # attached_file_path (obrigatório)
         if [ -z "$ATTACHED_FILE_PATH" ]; then
           echo "❌ [attached_file_path] Caminho não informado. A Action precisa de um arquivo para anexar ao PR."
           echo "   ➜ Gere o relatório no job anterior e passe o caminho em 'attached_file_path' (ex.: 'reports/pmd-report.md')."
@@ -71,7 +69,6 @@ runs:
           echo "✅ [attached_file_path] Encontrado em '$ATTACHED_FILE_PATH'. Será usado como base do arquivo publicado."
         fi
 
-        # pr_template_path (obrigatório)
         if [ -z "$PR_TEMPLATE_PATH" ]; then
           echo "❌  [pr_template_path] Não informado."
           echo "   ➜ Defina 'pr_template_path' com o caminho de um template customizado para personalizar o corpo do PR."
@@ -84,7 +81,6 @@ runs:
           echo "✅ [pr_template_path] Encontrado em '$PR_TEMPLATE_PATH'. Será usado para exibir a descrição da Pull Request."
         fi
 
-        # timeline_template_path (obrigatório)
         if [ -z "$TIMELINE_TEMPLATE_PATH" ]; then
           echo "❌  [timeline_template_path] Não informado."
           echo "   ➜ Defina 'timeline_template_path' com o caminho de um template customizado para personalizar a mensqgem do timeline na PR."
@@ -96,8 +92,7 @@ runs:
         else
           echo "✅ [timeline_template_path] Encontrado em '$TIMELINE_TEMPLATE_PATH'. Será usado para exibir a mensagem no timeline da Pull Request."
         fi
-        
-        # branch_convention_prefix (opcional)
+
         if [ -z "$BRANCH_CONVENTION_PREFIX" ]; then
           echo "ℹ️ [branch_convention_prefix] Não informado. Branches de relatório serão criados sem prefixo dedicado, podendo conflitar com branches de desenvolvimento."
           echo "   ➜ Defina um prefixo (ex.: 'audit/report') para isolar branches de relatório: '<prefix>/<branch_origem>'."
@@ -106,7 +101,6 @@ runs:
           echo "   ➜ Os branches de relatório serão criados como '${BRANCH_CONVENTION_PREFIX}/<branch_de_origem>'."
         fi
 
-        # pr_title (opcional)
         if [ -z "$PR_TITLE" ]; then
           echo "ℹ️ [pr_title] Não informado. O PR poderá ser criado sem título claro, dificultando a leitura na lista de PRs."
           echo "   ➜ Defina 'pr_title' com um título descritivo (ex.: '🛡️ Automated Pull Request')."
@@ -115,7 +109,6 @@ runs:
           echo "   ➜ Este valor será usado como título dos PRs de relatório."
         fi
 
-        # bot_email (opcional, mas crítico para loop protection)
         if [ -z "$BOT_EMAIL" ]; then
           echo "ℹ️ [bot_email] Não informado. O git usará o email padrão do ambiente e isso pode quebrar a proteção de loop baseada no autor."
           echo "   ➜ Defina 'bot_email' (ex.: 'git-pr-ops@users.noreply.github.com') para: "
@@ -125,12 +118,13 @@ runs:
           echo "ℹ️ [bot_email] Usando: '$BOT_EMAIL'."
           echo "   ➜ Este email será configurado como autor dos commits e usado na verificação de loops."
         fi
+
         git config user.name "git-pr-ops-bot"
         git config user.email "$BOT_EMAIL"
 
         echo "✅ Input validation complete."
         echo "::endgroup::"
-        
+
     - id: branch_convention
       name: "🪾 Branch Convention"
       shell: bash
@@ -352,7 +346,7 @@ runs:
         fi
 
         echo "::endgroup::"
-        
+
     - id: publish_pr
       name: "🚀 Publishing/Updating Pull Request"
       if: ${{ steps.analyze_pr_status.outputs.status_code != 'PREVIOUSLY_MERGED' && steps.analyze_pr_status.outputs.status_code != 'CLOSED_UNMERGED' }}
@@ -400,7 +394,6 @@ runs:
 
         echo "::endgroup::"
 
-
     - id: timeline_notification
       name: "🔔 Notify over PR Timeline"
       uses: Malnati/pr-comment@v8.0.0
@@ -412,12 +405,5 @@ runs:
       with:
         token: ${{ inputs.token }}
         template_path: ${{ inputs.timeline_template_path }}
-        pr_number: ${{ github.event.pull_request.number }}
+        pr_number: ${{ github.event.pull_request.number || github.event.issue.number }}
         message_id: git-report-ops
-        variables: |
-            {
-              "ATTACHED_FILE_PATH": ${ATTACHED_FILE_PATH},
-              "PR_URL": ${PR_URL},
-              "BRANCH_CONVENTION": ${BRANCH_CONVENTION},
-              "COMMIT_SHA": ${COMMIT_SHA}
-            }
