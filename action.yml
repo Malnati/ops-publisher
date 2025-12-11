@@ -1,4 +1,4 @@
-# Malnati/git-report-ops@v1.3.36
+# Malnati/git-report-ops@v1.3.37
 name: "Git Pull Request Ops"
 description: "Engine de auditoria que assina o conteúdo, detecta renames e envia notificações padronizadas para Pull Requests."
 author: "Ricardo Malnati"
@@ -10,6 +10,9 @@ branding:
 inputs:
   token:
     description: "GitHub token."
+    required: true
+  pr_number:
+    description: "Número da Pull Request origem, se será usada para descobrir qual é a branch destino da nova PR."
     required: true
   attached_file_path:
     description: "Arquivo anexo ao repositório. (report.csv)"
@@ -54,6 +57,14 @@ runs:
           exit 1
         else
           echo "✅ [token] Informado. A Action poderá criar/atualizar PRs e publicar comentários."
+        fi
+        
+        if [ -z "$PR_NUMBER" ]; then
+          echo "❌ [pr_number] Obrigatório e não informado. Sem este pr_number a Action não consegue descobrir qual é a branch destino da nova PR."
+          echo "   ➜ Defina 'pr_number' com 'N' ou '#N' da PR origem."
+          exit 1
+        else
+          echo "✅ [pr_number] Informado. A Action descobrirá dinamicamente qual é a branch destino da nova PR."
         fi
 
         if [ -z "$ATTACHED_FILE_PATH" ]; then
@@ -123,13 +134,51 @@ runs:
 
         echo "✅ Input validation complete."
         echo "::endgroup::"
+      
+    - id: pr_info
+      name: "🔍 Obter informações da PR de origem"
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.token }}
+        PR_NUMBER: ${{ inputs.pr_number }}
+      run: |
+        set -euo pipefail
+    
+        gh auth status || gh auth login --with-token <<<"$GH_TOKEN"
+    
+        PR_JSON=$(gh pr view "$PR_NUMBER" --json url,title,headRefName,headRefOid,baseRefName,baseRefOid)
+    
+        PR_URL=$(echo "$PR_JSON" | jq -r '.url')
+        PR_TITLE=$(echo "$PR_JSON" | jq -r '.title')
+    
+        DEST_BRANCH_NAME=$(echo "$PR_JSON" | jq -r '.baseRefName')
+        DEST_BRANCH_SHA=$(echo "$PR_JSON" | jq -r '.baseRefOid')
+    
+        SOURCE_BRANCH_NAME=$(echo "$PR_JSON" | jq -r '.headRefName')
+        SOURCE_BRANCH_SHA=$(echo "$PR_JSON" | jq -r '.headRefOid')
+    
+        echo "PR_URL=$PR_URL"
+        echo "PR_TITLE=$PR_TITLE"
+        echo "DEST_BRANCH_NAME=$DEST_BRANCH_NAME"
+        echo "DEST_BRANCH_SHA=$DEST_BRANCH_SHA"
+        echo "SOURCE_BRANCH_NAME=$SOURCE_BRANCH_NAME"
+        echo "SOURCE_BRANCH_SHA=$SOURCE_BRANCH_SHA"
+    
+        echo "pr_url=$PR_URL" >> "$GITHUB_OUTPUT"
+        echo "pr_title=$PR_TITLE" >> "$GITHUB_OUTPUT"
+        echo "dest_branch_name=$DEST_BRANCH_NAME" >> "$GITHUB_OUTPUT"
+        echo "dest_branch_sha=$DEST_BRANCH_SHA" >> "$GITHUB_OUTPUT"
+        echo "source_branch_name=$SOURCE_BRANCH_NAME" >> "$GITHUB_OUTPUT"
+        echo "source_branch_sha=$SOURCE_BRANCH_SHA" >> "$GITHUB_OUTPUT"
 
     - id: branch_convention
       name: "🪾 Branch Convention"
       shell: bash
       env:
+        GH_TOKEN: ${{ inputs.token }}
         HEAD_REF: ${{ github.head_ref }}
         BRANCH_CONVENTION_PREFIX: ${{ inputs.branch_convention_prefix }}
+        PR_NUMBER: ${{ inputs.pr_number }}
       run: |
         set -euo pipefail
         echo "::group::🪾 Create branch due to it does not exist yet;"
