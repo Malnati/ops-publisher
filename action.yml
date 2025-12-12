@@ -1,4 +1,4 @@
-# Malnati/git-report-ops@v1.3.37
+# Malnati/git-report-ops@v1.3.38
 name: "Git Pull Request Ops"
 description: "Engine de auditoria que assina o conteúdo, detecta renames e envia notificações padronizadas para Pull Requests."
 author: "Ricardo Malnati"
@@ -23,9 +23,6 @@ inputs:
   pr_title:
     required: false
     default: "🛡️ Automated Pull Request"
-  bot_email:
-    required: false
-    default: "git-pr-ops@users.noreply.github.com"
   pr_template_path:
     required: true
     description: "Arquivo anexo ao repositório. (pr-template.md)"
@@ -36,10 +33,10 @@ inputs:
     description: "Nome do bot usado nos commits."
     required: false
     default: "git-pr-ops-bot"
-  bot_name:
-    description: "Nome do bot usado nos commits."
+  bot_email:
     required: false
-    default: "git-pr-ops-bot"    
+    default: "git-pr-ops@users.noreply.github.com"
+    
 runs:
   using: "composite"
   steps:
