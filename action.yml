@@ -171,95 +171,73 @@ runs:
         echo "source_branch_name=$SOURCE_BRANCH_NAME" >> "$GITHUB_OUTPUT"
         echo "source_branch_sha=$SOURCE_BRANCH_SHA" >> "$GITHUB_OUTPUT"
 
+    - name: "🔁 Encontrar PRs derivadas"
+      id: derivated_prs_finder
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.token }}
+        SOURCE_BRANCH: ${{ steps.pr_info.outputs.source_branch_name }}
+      run: |
+        set -euo pipefail
+    
+        gh auth status || gh auth login --with-token <<<"$GH_TOKEN"
+    
+        if [ -z "$SOURCE_BRANCH" ]; then
+          echo "⚠ SOURCE_BRANCH vazio. Nada a fazer."
+          exit 0
+        fi
+    
+        PR_LIST=$(gh pr list \
+          --state open \
+          --base "$SOURCE_BRANCH" \
+          --json number,url,headRefName,baseRefName)
+    
+        COUNT=$(echo "$PR_LIST" | jq 'length')
+    
+        echo "🔍 PRs derivadas abertas com destino em '$SOURCE_BRANCH': total=$COUNT"
+    
+        echo "$PR_LIST" | jq -c '.[]' | while read -r pr; do
+          NUM=$(echo "$pr" | jq -r '.number')
+          URL=$(echo "$pr" | jq -r '.url')
+          HEAD=$(echo "$pr" | jq -r '.headRefName')
+          BASE=$(echo "$pr" | jq -r '.baseRefName')
+    
+          echo "- #$NUM $URL"
+          echo "  head: $HEAD"
+          echo "  base: $BASE"
+        done
+    
+        echo "derived_count=$COUNT" >> "$GITHUB_OUTPUT"
+        echo "derived_prs_json=$PR_LIST" >> "$GITHUB_OUTPUT"
+    
     - id: branch_convention
       name: "🪾 Branch Convention"
       shell: bash
       env:
-        GH_TOKEN: ${{ inputs.token }}
-        HEAD_REF: ${{ github.head_ref }}
         BRANCH_CONVENTION_PREFIX: ${{ inputs.branch_convention_prefix }}
-        PR_NUMBER: ${{ inputs.pr_number }}
       run: |
         set -euo pipefail
-        echo "::group::🪾 Create branch due to it does not exist yet;"
-        echo "head_ref (original): $HEAD_REF"
-
-        if [ -z "$HEAD_REF" ]; then
-          HEAD_REF="$(git rev-parse --abbrev-ref HEAD || true)"
-          echo "head_ref (fallback rev-parse): $HEAD_REF"
-          if [ "$HEAD_REF" = "HEAD" ] || [ -z "$HEAD_REF" ]; then
-            HEAD_REF="detached-head"
-            echo "head_ref (fallback detached): $HEAD_REF"
-          fi
+        echo "::group::🪾 Define branch convention"
+    
+        if [ -z "${BRANCH_CONVENTION_PREFIX:-}" ]; then
+          BRANCH_CONVENTION_PREFIX="ops/report/latest"
         fi
-
+    
         git fetch --all --prune
-        LATEST_SHA="$(git rev-list --all -n 1)"
+    
+        LATEST_SHA="$(git rev-parse HEAD)"
         CUSTOM_SUFFIX="${LATEST_SHA: -10}"
-        PREFIX="${BRANCH_CONVENTION_PREFIX}/${CUSTOM_SUFFIX}"
+    
+        BRANCH_CONVENTION="${BRANCH_CONVENTION_PREFIX}/${CUSTOM_SUFFIX}"
+    
+        echo "prefix: $BRANCH_CONVENTION_PREFIX"
         echo "latest_sha: $LATEST_SHA"
         echo "custom_suffix: $CUSTOM_SUFFIX"
-        echo "branch_convention_prefix: $PREFIX"
-        BRANCH_CONVENTION="${PREFIX}/${HEAD_REF}"
         echo "branch_convention: $BRANCH_CONVENTION"
-
-        if [ "$HEAD_REF" = "$BRANCH_CONVENTION" ]; then
-          echo "✅ Já está na própria branch: $BRANCH_CONVENTION. Nada a fazer."
-          echo "branch_convention=$BRANCH_CONVENTION" >> "$GITHUB_OUTPUT"
-          echo "::endgroup::"
-          exit 0
-        fi
-
-        if git show-ref --verify --quiet "refs/heads/$BRANCH_CONVENTION"; then
-          echo "⚠️ Branch já existe: $BRANCH_CONVENTION"
-        else
-          if git show-ref --verify --quiet "refs/heads/$HEAD_REF"; then
-            git checkout "$HEAD_REF"
-          else
-            echo "ℹ️ HEAD_REF '$HEAD_REF' não encontrado como branch. Usando HEAD atual para criar a branch de relatório."
-          fi
-          git checkout -b "$BRANCH_CONVENTION"
-          echo "✅ Branch criada: $BRANCH_CONVENTION"
-        fi
-
+    
         echo "branch_convention=$BRANCH_CONVENTION" >> "$GITHUB_OUTPUT"
         echo "::endgroup::"
-
-    - id: latest_commit_verify
-      name: "🔎 Latest Commit Verify"
-      shell: bash
-      env:
-        BOT_EMAIL: ${{ inputs.bot_email }}
-      run: |
-        echo "::group::🔎 Verify latest commit owner and branch"
-        git fetch --all --prune
-        LATEST_SHA="$(git rev-list --all -n 1)"
-        CURRENT_SHA="$(git rev-parse HEAD)"
-        CURRENT_BRANCH="$(git rev-parse --abbrev-ref HEAD)"
-        COMMIT_AUTHOR_RAW="$(git show -s --format='%an|%ae' "$LATEST_SHA")"
-        COMMIT_AUTHOR_NAME="${COMMIT_AUTHOR_RAW%%|*}"
-        COMMIT_AUTHOR_EMAIL="${COMMIT_AUTHOR_RAW##*|}"
-        echo "latest_sha: $LATEST_SHA"
-        echo "current_sha: $CURRENT_SHA"
-        echo "current_branch: $CURRENT_BRANCH"
-        echo "commit_author_name: $COMMIT_AUTHOR_NAME"
-        echo "commit_author_email: $COMMIT_AUTHOR_EMAIL"
-        echo "bot_email: $BOT_EMAIL"
-        is_bot_commit=false
-        if [ "$COMMIT_AUTHOR_EMAIL" = "$BOT_EMAIL" ]; then
-          is_bot_commit=true
-        fi
-        is_latest_on_current_branch=false
-        if [ "$LATEST_SHA" = "$CURRENT_SHA" ]; then
-          is_latest_on_current_branch=true
-        fi
-        if [ "$is_bot_commit" = true ] && [ "$is_latest_on_current_branch" = true ]; then
-          echo "✅ Último commit do repositório já é do bot nesta mesma branch. Nada a fazer."
-          echo "::endgroup::"
-          exit 0
-        fi
-        echo "::endgroup::"
-
+        
     - id: commit_attached_file
       name: "📝 Commit File"
       shell: bash
@@ -269,192 +247,99 @@ runs:
         BOT_EMAIL: ${{ inputs.bot_email }}
         BOT_NAME: ${{ inputs.bot_name }}
       run: |
+        set -euo pipefail
         echo "::group::📝 Commit file"
         echo "branch_convention: $BRANCH_CONVENTION"
         echo "attached_file_path: $ATTACHED_FILE_PATH"
-        git checkout "$BRANCH_CONVENTION"
+
+        if [ -z "${BRANCH_CONVENTION:-}" ]; then
+          echo "❌ BRANCH_CONVENTION vazio. Verifique o bloco branch_convention."
+          echo "::endgroup::"
+          exit 1
+        fi
+
+        git fetch --all --prune
+
+        if git show-ref --verify --quiet "refs/heads/$BRANCH_CONVENTION"; then
+          echo "ℹ Branch já existe localmente: $BRANCH_CONVENTION"
+          git checkout "$BRANCH_CONVENTION"
+        else
+          if git ls-remote --exit-code --heads origin "$BRANCH_CONVENTION" >/dev/null 2>&1; then
+            echo "ℹ Branch existe no remoto, criando tracking local: $BRANCH_CONVENTION"
+            git checkout -b "$BRANCH_CONVENTION" "origin/$BRANCH_CONVENTION"
+          else
+            echo "🆕 Criando nova branch a partir do HEAD atual: $BRANCH_CONVENTION"
+            git checkout -b "$BRANCH_CONVENTION"
+          fi
+        fi
+
         if [ ! -f "$ATTACHED_FILE_PATH" ]; then
           echo "❌ Arquivo de relatório não encontrado: $ATTACHED_FILE_PATH"
           echo "::endgroup::"
           exit 1
         fi
+
         git config user.email "$BOT_EMAIL"
         if [ -n "${BOT_NAME:-}" ]; then
           git config user.name "$BOT_NAME"
         fi
+
         git add "$ATTACHED_FILE_PATH"
+
         if git diff --cached --quiet; then
           echo "⚠️ Nenhuma alteração para commitar em $ATTACHED_FILE_PATH"
           echo "::endgroup::"
           exit 0
         fi
+
         git commit -m "chore(attach): update attached file"
         git push origin "$BRANCH_CONVENTION"
+
         COMMIT_SHA="$(git rev-parse HEAD)"
         echo "commit_sha=$COMMIT_SHA" >> "$GITHUB_OUTPUT"
+        echo "branch_convention=$BRANCH_CONVENTION" >> "$GITHUB_OUTPUT"
         echo "✅ Attached file commit realizado em $BRANCH_CONVENTION (commit $COMMIT_SHA)"
         echo "::endgroup::"
 
-    - id: analyze_pr_status
-      name: "🔍 Análise de PR Existente"
-      shell: bash
-      env:
-        GH_TOKEN: ${{ inputs.token }}
-        COMMIT_SHA: ${{ steps.commit_attached_file.outputs.commit_sha }}
-        BRANCH_CONVENTION: ${{ steps.branch_convention.outputs.branch_convention }}
-        HEAD_REF: ${{ github.head_ref }}
-      run: |
-        echo "::group::🔍 Analyzing Existing PR"
-        echo "BRANCH_CONVENTION: $BRANCH_CONVENTION"
-        echo "HEAD_REF (original): ${HEAD_REF:-}"
-
-        BASE_REF="$HEAD_REF"
-        if [ -z "$BASE_REF" ]; then
-          BASE_REF="$(git rev-parse --abbrev-ref HEAD || true)"
-          echo "HEAD_REF fallback (rev-parse): $BASE_REF"
-          if [ "$BASE_REF" = "HEAD" ] || [ -z "$BASE_REF" ]; then
-            BASE_REF="detached-head"
-            echo "HEAD_REF fallback (detached): $BASE_REF"
-          fi
-        fi
-
-        echo "Using BASE_REF: $BASE_REF"
-
-        PR_DATA=$(gh pr list --base "$BASE_REF" --state all --json headRefName,state,url,mergedAt)
-        echo "PR_DATA raw: $PR_DATA"
-
-        echo "Listing PR entries:"
-        echo "$PR_DATA" | jq -r '.[] | " - headRefName=\(.headRefName) state=\(.state) url=\(.url) mergedAt=\(.mergedAt)"'
-
-        FILTERED=$(echo "$PR_DATA" | jq -r '.[] | select(.headRefName | startswith("ops/latest/")) | @base64')
-        echo "Filtered candidates (base64):"
-        echo "$FILTERED" | nl -ba
-
-        BEST=""
-        BEST_PRIORITY=99
-
-        while IFS= read -r CAND; do
-          if [ -z "$CAND" ]; then
-            continue
-          fi
-
-          DECODED=$(echo "$CAND" | base64 --decode)
-          STATE=$(echo "$DECODED" | jq -r '.state')
-          URL=$(echo "$DECODED" | jq -r '.url')
-          HEAD=$(echo "$DECODED" | jq -r '.headRefName')
-          MERGED=$(echo "$DECODED" | jq -r '.mergedAt')
-
-          if [ "$STATE" = "OPEN" ]; then
-            PRIORITY=0
-          elif [ "$STATE" = "CLOSED" ] && [ "$MERGED" = "null" ]; then
-            PRIORITY=1
-          else
-            PRIORITY=2
-          fi
-
-          echo "Candidate: head=$HEAD state=$STATE merged=$MERGED priority=$PRIORITY"
-
-          if [ "$PRIORITY" -lt "$BEST_PRIORITY" ]; then
-            BEST_PRIORITY=$PRIORITY
-            BEST="$CAND"
-          fi
-        done <<< "$FILTERED"
-
-        EXISTING="$BEST"
-        echo "EXISTING (base64): $EXISTING"
-
-        if [ -z "$EXISTING" ]; then
-          echo "⚠️ No existing audit PR for this base branch."
-          echo "status_code=NOT_FOUND" >> "$GITHUB_OUTPUT"
-        else
-          decode() { echo "$EXISTING" | base64 --decode; }
-          STATE=$(decode | jq -r '.state')
-          URL=$(decode | jq -r '.url')
-          HEAD=$(decode | jq -r '.headRefName')
-          MERGED=$(decode | jq -r '.mergedAt')
-
-          echo "existing_head: $HEAD"
-          echo "state: $STATE"
-          echo "url: $URL"
-          echo "merged: $MERGED"
-
-          echo "existing_url=$URL" >> "$GITHUB_OUTPUT"
-          echo "existing_head=$HEAD" >> "$GITHUB_OUTPUT"
-          echo "pr_state=$STATE" >> "$GITHUB_OUTPUT"
-
-          if [ "$STATE" = "OPEN" ]; then
-            echo "🟢 PR is OPEN."
-            echo "status_code=OPEN_EXISTING" >> "$GITHUB_OUTPUT"
-          elif [ "$STATE" = "CLOSED" ] && [ "$MERGED" = "null" ]; then
-            echo "🔴 PR is CLOSED (Unmerged)."
-            echo "status_code=CLOSED_UNMERGED" >> "$GITHUB_OUTPUT"
-          else
-            echo "⚪ PR is Merged/Missing."
-            echo "status_code=PREVIOUSLY_MERGED" >> "$GITHUB_OUTPUT"
-          fi
-        fi
-
-        echo "::endgroup::"
     - id: publish_pr
-      name: "🚀 Publishing/Updating Pull Request"
-      if: ${{ steps.analyze_pr_status.outputs.status_code != 'PREVIOUSLY_MERGED' && steps.analyze_pr_status.outputs.status_code != 'CLOSED_UNMERGED' }}
+      name: "🚀 Publishing Pull Request"
       shell: bash
       env:
         GH_TOKEN: ${{ inputs.token }}
-        HEAD_REF: ${{ github.head_ref }}
-        BRANCH_CONVENTION: ${{ steps.branch_convention.outputs.branch_convention }}
+        BASE_BRANCH: ${{ steps.pr_info.outputs.source_branch_name }}
+        HEAD_BRANCH: ${{ steps.commit_attached_file.outputs.branch_convention }}
         TITLE: ${{ inputs.pr_title }}
         PR_TEMPLATE_PATH: ${{ inputs.pr_template_path }}
-        STATUS_CODE: ${{ steps.analyze_pr_status.outputs.status_code }}
-        EXISTING_URL: ${{ steps.analyze_pr_status.outputs.existing_url }}
-        EXISTING_HEAD: ${{ steps.analyze_pr_status.outputs.existing_head }}
       run: |
+        set -euo pipefail
         echo "::group::🚀 Publishing"
-        echo "STATUS_CODE: $STATUS_CODE"
-        echo "HEAD_REF: $HEAD_REF"
-        echo "BRANCH_CONVENTION: $BRANCH_CONVENTION"
+        echo "BASE_BRANCH: $BASE_BRANCH"
+        echo "HEAD_BRANCH: $HEAD_BRANCH"
         echo "PR_TEMPLATE_PATH: $PR_TEMPLATE_PATH"
 
-        PR_URL=""
-
-        if [ "$STATUS_CODE" = "NOT_FOUND" ]; then
-          echo "🔹 Nenhuma PR anterior encontrada. Criando nova PR..."
-          PR_URL="$(gh pr create \
-            --base "$HEAD_REF" \
-            --head "$BRANCH_CONVENTION" \
-            --title "$TITLE" \
-            --body-file "$PR_TEMPLATE_PATH" \
-            --json url \
-            --jq '.url' | tr -d '"')"
-
-          if [ -z "$PR_URL" ]; then
-            echo "🔴 Falha ao criar nova PR ou obter URL." >&2
-            exit 1
-          fi
-
-          echo "PR_URL: $PR_URL"
-          echo "pr_url=$PR_URL" >> "$GITHUB_OUTPUT"
-          echo "pr_state=OPEN" >> "$GITHUB_OUTPUT"
-          echo "✅ New PR created."
-        elif [ "$STATUS_CODE" = "OPEN_EXISTING" ]; then
-          echo "🔹 PR existente aberta encontrada. Atualizando PR..."
-          echo "EXISTING_HEAD: $EXISTING_HEAD"
-          echo "EXISTING_URL:  $EXISTING_URL"
-
-          PR_URL="$EXISTING_URL"
-          echo "PR_URL: $PR_URL"
-
-          if ! gh pr edit "$PR_URL" --body-file "$PR_TEMPLATE_PATH"; then
-            echo "🔴 Erro ao atualizar PR em $PR_URL com o arquivo $PR_TEMPLATE_PATH" >&2
-            exit 1
-          fi
-
-          echo "pr_url=$PR_URL" >> "$GITHUB_OUTPUT"
-          echo "pr_state=OPEN" >> "$GITHUB_OUTPUT"
-        else
-          echo "ℹ️ STATUS_CODE=$STATUS_CODE não requer create/edit."
+        if [ -z "${BASE_BRANCH:-}" ] || [ -z "${HEAD_BRANCH:-}" ]; then
+          echo "❌ BASE_BRANCH ou HEAD_BRANCH vazios. Verifique pr_info e commit_attached_file."
+          echo "::endgroup::"
+          exit 1
         fi
 
+        PR_URL="$(gh pr create \
+          --base "$BASE_BRANCH" \
+          --head "$HEAD_BRANCH" \
+          --title "$TITLE" \
+          --body-file "$PR_TEMPLATE_PATH" \
+          --json url \
+          --jq '.url' | tr -d '"')"
+
+        if [ -z "$PR_URL" ]; then
+          echo "🔴 Falha ao criar nova PR ou obter URL." >&2
+          echo "::endgroup::"
+          exit 1
+        fi
+
+        echo "PR_URL: $PR_URL"
+        echo "pr_url=$PR_URL" >> "$GITHUB_OUTPUT"
+        echo "pr_state=OPEN" >> "$GITHUB_OUTPUT"
         echo "::endgroup::"
         
     - name: Render template
@@ -462,8 +347,8 @@ runs:
       uses: Malnati/template-render@v1.0.0
       env:
         ATTACHED_FILE_PATH: ${{ inputs.attached_file_path }}
-        PR_URL: ${{ steps.publish_pr.outputs.pr_url || steps.analyze_pr_status.outputs.existing_url }}
-        BRANCH_CONVENTION: ${{ steps.branch_convention.outputs.branch_convention }}
+        PR_URL: ${{ steps.publish_pr.outputs.pr_url }}
+        BRANCH_CONVENTION: ${{ steps.commit_attached_file.outputs.branch_convention }}
         COMMIT_SHA: ${{ steps.commit_attached_file.outputs.commit_sha }}
       with:
         template: ${{ inputs.timeline_template_path }}
@@ -474,5 +359,5 @@ runs:
       uses: Malnati/pr-comment@v8.0.1
       with:
         token: ${{ inputs.token }}
-        pr_number: ${{ github.event.pull_request.number || github.event.issue.number }}
+        PR_NUMBER: ${{ inputs.pr_number }}
         template_path: ${{ steps.render_timeline.outputs.path }}
