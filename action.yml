@@ -345,7 +345,16 @@ runs:
         echo "pr_url=$PR_URL" >> "$GITHUB_OUTPUT"
         echo "pr_state=OPEN" >> "$GITHUB_OUTPUT"
         echo "::endgroup::"
-        
+
+    - name: "🪄 Exportar variáveis para o template"
+      id: export_vars_template
+      shell: bash
+      run: |
+        set -euo pipefail
+        env | grep -v '^GITHUB_' | while IFS='=' read -r key value; do
+          printf '%s=%s\n' "$key" "$value" >> "$GITHUB_ENV"
+        done
+          
     - name: Render template
       id: render_timeline
       uses: Malnati/template-render@v1.0.0
