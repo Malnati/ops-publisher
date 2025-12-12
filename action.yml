@@ -1,4 +1,4 @@
-# Malnati/git-report-ops@v1.3.41
+# Malnati/git-report-ops@v1.3.42
 name: "Git Pull Request Ops"
 description: "Engine de auditoria que assina o conteúdo, detecta renames e envia notificações padronizadas para Pull Requests."
 author: "Ricardo Malnati"
@@ -356,9 +356,9 @@ runs:
           printf '%s=%s\n' "$key" "$value" >> "$GITHUB_ENV"
         done
           
-    - name: Render template
+    - name: "📄 Render template"
       id: render_timeline
-      uses: Malnati/template-render@v1.0.0
+      uses: Malnati/template-render@v1.0.1
       env:
         ATTACHED_FILE_PATH: ${{ inputs.attached_file_path }}
         PR_URL: ${{ steps.publish_pr.outputs.pr_url }}
@@ -370,7 +370,7 @@ runs:
           
     - id: timeline_notification
       name: "🔔 Notify over PR Timeline"
-      uses: Malnati/pr-comment@v8.0.1
+      uses: Malnati/pr-comment@v8.0.2
       with:
         token: ${{ inputs.token }}
         pr_number: ${{ inputs.pr_number }}
