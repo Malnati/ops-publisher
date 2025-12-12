@@ -1,4 +1,4 @@
-# Malnati/git-report-ops@v1.3.48
+# Malnati/git-report-ops@v1.3.49
 name: "Git Pull Request Ops"
 description: "Engine de auditoria que assina o conteúdo, detecta renames e envia notificações padronizadas para Pull Requests."
 author: "Ricardo Malnati"
@@ -303,17 +303,19 @@ runs:
         echo "✅ Attached file commit realizado em $BRANCH_CONVENTION (commit $COMMIT_SHA)"
         echo "::endgroup::"
 
-
     - name: "🪄 Exportar basename ATTACHED_FILE_PATH"
       id: reexport_basename_attached_file
       shell: bash
       env:
+        PR_NUMBER: ${{ inputs.pr_number }}
         ATTACHED_FILE_PATH: ${{ inputs.attached_file_path }}
       run: |
         set -euo pipefail
         FILENAME="$(basename "$ATTACHED_FILE_PATH")"
         echo "Basename for ATTACHED_FILE_PATH: $FILENAME"
+        echo "PR_NUMBER for inputs.attached_file_path: $PR_NUMBER"
         echo "ATTACHED_FILE_PATH=$FILENAME" >> "$GITHUB_ENV"
+        echo "PR_NUMBER=$PR_NUMBER" >> "$GITHUB_ENV"
         
     - name: "🪄 Exportar variáveis para o PR template"
       id: export_vars_pr_template
