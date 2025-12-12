@@ -1,4 +1,4 @@
-# Malnati/git-report-ops@v1.3.46
+# Malnati/git-report-ops@v1.3.47
 name: "Git Pull Request Ops"
 description: "Engine de auditoria que assina o conteúdo, detecta renames e envia notificações padronizadas para Pull Requests."
 author: "Ricardo Malnati"
@@ -280,7 +280,7 @@ runs:
           echo "::endgroup::"
           exit 1
         fi
-
+        
         git config user.email "$BOT_EMAIL"
         if [ -n "${BOT_NAME:-}" ]; then
           git config user.name "$BOT_NAME"
@@ -303,13 +303,24 @@ runs:
         echo "✅ Attached file commit realizado em $BRANCH_CONVENTION (commit $COMMIT_SHA)"
         echo "::endgroup::"
 
+
+    - name: "🪄 Exportar variáveis para o PR template"
+      id: export_vars_pr_template
+      shell: bash
+      env:
+        ATTACHED_FILE_PATH: ${{ inputs.attached_file_path }}
+      run: |
+        set -euo pipefail
+        FILENAME="$(basename "$ATTACHED_FILE_PATH")"
+        echo "Basename for ATTACHED_FILE_PATH: $FILENAME"
+        echo "ATTACHED_FILE_PATH=$FILENAME" >> "$GITHUB_ENV"
+        
     - name: "🪄 Exportar variáveis para o PR template"
       id: export_vars_pr_template
       shell: bash
       run: |
         set -euo pipefail
         env | grep -v '^GITHUB_' | while IFS='=' read -r key value; do
-          printf '%s=%s\n' "$key" "$value"
           printf '%s=%s\n' "$key" "$value" >> "$GITHUB_ENV"
         done
           
@@ -368,7 +379,6 @@ runs:
       run: |
         set -euo pipefail
         env | grep -v '^GITHUB_' | while IFS='=' read -r key value; do
-          printf '%s=%s\n' "$key" "$value"
           printf '%s=%s\n' "$key" "$value" >> "$GITHUB_ENV"
         done
           
