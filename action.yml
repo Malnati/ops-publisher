@@ -1,4 +1,4 @@
-# Malnati/git-report-ops@v1.3.45
+# Malnati/git-report-ops@v1.3.46
 name: "Git Pull Request Ops"
 description: "Engine de auditoria que assina o conteúdo, detecta renames e envia notificações padronizadas para Pull Requests."
 author: "Ricardo Malnati"
@@ -325,7 +325,7 @@ runs:
       shell: bash
       env:
         GH_TOKEN: ${{ inputs.token }}
-        BASE_BRANCH: ${{ steps.pr_info.outputs.dest_branch_name }}
+        BASE_BRANCH: ${{ steps.pr_info.outputs.source_branch_name }}
         HEAD_BRANCH: ${{ steps.commit_attached_file.outputs.branch_convention }}
         TITLE: ${{ inputs.pr_title }}
         PR_TEMPLATE_PATH: ${{ steps.render_pr.outputs.path }}
