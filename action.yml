@@ -352,8 +352,8 @@ runs:
       run: |
         set -euo pipefail
         env | grep -v '^GITHUB_' | while IFS='=' read -r key value; do
-          echo "${key}=$(value)"
-          echo "${key}=$(value)" >> "$GITHUB_ENV"
+          printf '%s=%s\n' "$key" "$value"
+          printf '%s=%s\n' "$key" "$value" >> "$GITHUB_ENV"
         done
           
     - name: Render template
