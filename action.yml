@@ -1,4 +1,4 @@
-# Malnati/git-report-ops@v2.0.0
+# Malnati/git-report-ops@v2.0.1
 name: "Git Pull Request Ops"
 description: "Engine de auditoria que assina o conteúdo, detecta renames e envia notificações padronizadas para Pull Requests."
 author: "Ricardo Malnati"
@@ -332,7 +332,7 @@ runs:
       with:
         template: ${{ inputs.pr_template_path }}
         output: /tmp/hardcode-pr.md
-    
+        
     - id: publish_pr
       name: "🚀 Publishing Pull Request"
       shell: bash
@@ -356,18 +356,23 @@ runs:
 
         if [ -n "${EXISTING_URL:-}" ] && [ "$EXISTING_URL" != "null" ]; then
           echo "✅ PR já existe: $EXISTING_URL"
-          echo "pr_url=$EXISTING_URL" >> "$GITHUB_OUTPUT"
-          echo "pr_state=OPEN" >> "$GITHUB_OUTPUT"
-          exit 0
+          PR_URL="$EXISTING_URL"
+        else
+          gh pr create \
+            --base "$BASE_BRANCH" \
+            --head "$HEAD_BRANCH" \
+            --title "$TITLE" \
+            --body-file "$PR_TEMPLATE_PATH"
+
+          PR_URL="$(gh pr view "$HEAD_BRANCH" --json url --jq '.url')"
         fi
 
-        gh pr create \
-          --base "$BASE_BRANCH" \
-          --head "$HEAD_BRANCH" \
-          --title "$TITLE" \
-          --body-file "$PR_TEMPLATE_PATH"
+        if [ -z "${PR_URL:-}" ] || [ "$PR_URL" = "null" ]; then
+          echo "🔴 Falha ao obter URL da PR." >&2
+          exit 1
+        fi
 
-        PR_URL="$(gh pr view "$HEAD_BRANCH" --json url --jq '.url')"
+        echo "PR_URL: $PR_URL"
         echo "pr_url=$PR_URL" >> "$GITHUB_OUTPUT"
         echo "pr_state=OPEN" >> "$GITHUB_OUTPUT"
         
