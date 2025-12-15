@@ -3,6 +3,8 @@
 
 **Ops Publisher** is a GitHub Action that publishes any repository file (Markdown/JSON/CSV/etc) to a **dedicated branch** and creates (or reuses) a **derived Pull Request**, while also posting a **timeline message** on the source PR using a template.
 
+![Ops Publisher overview showing the derived PR workflow](../assets/ops-publisher-whatisit-original.png)
+
 ## How it works
 
 1. Reads the source PR via `pr_number` (uses `gh pr view`) and retrieves:
