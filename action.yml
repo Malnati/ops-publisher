@@ -36,7 +36,10 @@ inputs:
   bot_email:
     required: false
     default: "git-pr-ops@users.noreply.github.com"
-
+  errors:
+    required: false
+    default: ".github/workflows/errors.log"
+    
 runs:
   using: "composite"
   steps:
@@ -53,6 +56,7 @@ runs:
         BOT_EMAIL: ${{ inputs.bot_email }}
         PR_TEMPLATE_PATH: ${{ inputs.pr_template_path }}
         TIMELINE_TEMPLATE_PATH: ${{ inputs.timeline_template_path }}
+        ERRORS_PATH: ${{ inputs.errors }}
       run: |
         echo "::group::🔧 Setup & Input Validation"
 
@@ -104,6 +108,16 @@ runs:
           echo "❌ [timeline_template_path] Arquivo '$TIMELINE_TEMPLATE_PATH' não encontrado."
           echo "   ➜ Verifique o caminho informado em 'timeline_template_path' e garanta que o arquivo é criado antes desta Action."
           exit 1
+        else
+          echo "✅ [timeline_template_path] Encontrado em '$TIMELINE_TEMPLATE_PATH'. Será usado para exibir a mensagem no timeline da Pull Request."
+        fi
+
+        if [ -z "$ERRORS_PATH" ]; then
+          echo "ℹ️ [errors] Não informado."
+          echo "   ➜ Defina 'errors' com o caminho de um arquivo de log customizado para personalizar as saidas de erros deste workflow."
+        elif [ ! -f "$ERRORS_PATH" ]; then
+          echo "ℹ️ [errors] Arquivo '$ERRORS_PATH' não encontrado."
+          echo "   ➜ Um arquivo vazio será criado para esta Action e nele serão adicionados os erros, caso ocorram."
         else
           echo "✅ [timeline_template_path] Encontrado em '$TIMELINE_TEMPLATE_PATH'. Será usado para exibir a mensagem no timeline da Pull Request."
         fi
