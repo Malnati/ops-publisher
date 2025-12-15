@@ -44,7 +44,7 @@ runs:
   using: "composite"
   steps:
     - name: "🧰 Setup error logging"
-      uses: Malnati/ops-errors@v1.0.0
+      uses: Malnati/ops-errors@v1.0.1
       with:
         errors: ${{ inputs.errors }}
 
