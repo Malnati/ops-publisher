@@ -1,13 +1,13 @@
 <!-- docs/index.html -->
 <!doctype html>
-<html lang="pt-BR">
+<html lang="en-US">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Ops Publisher — GitHub Actions</title>
-    <meta name="description" content="Publicador GitOps de arquivos via branch dedicada + Pull Request derivada + comentário no timeline." />
+    <meta name="description" content="GitOps file publisher via dedicated branch + derivative Pull Request + timeline comment." />
     <meta property="og:title" content="Ops Publisher" />
-    <meta property="og:description" content="Publicador GitOps de arquivos via branch dedicada + Pull Request derivada + comentário no timeline." />
+    <meta property="og:description" content="GitOps file publisher via dedicated branch + derivative Pull Request + timeline comment." />
     <meta property="og:type" content="website" />
     <meta name="theme-color" content="#0b1220" />
     <style>
@@ -113,16 +113,16 @@
           </div>
           <div class="titleblock">
             <b>Ops Publisher</b>
-            <span>GitHub Action · File publisher via PR derivada</span>
+            <span>GitHub Action · File publisher via derivative PR</span>
           </div>
         </div>
 
         <div class="btns">
-          <a class="btn primary" href="https://github.com/Malnati/ops-publisher" target="_blank" rel="noreferrer">
+            <a class="btn primary" href="https://github.com/Malnati/ops-publisher" target="_blank" rel="noreferrer">
             <svg viewBox="0 0 24 24" fill="none">
               <path d="M12 2C6.477 2 2 6.6 2 12.267c0 4.533 2.865 8.38 6.839 9.737.5.096.682-.223.682-.495 0-.245-.009-.894-.014-1.755-2.782.62-3.369-1.375-3.369-1.375-.454-1.183-1.11-1.498-1.11-1.498-.907-.64.069-.627.069-.627 1.003.073 1.53 1.055 1.53 1.055.892 1.566 2.341 1.114 2.91.852.091-.667.349-1.114.635-1.37-2.22-.263-4.555-1.14-4.555-5.072 0-1.12.39-2.035 1.03-2.753-.103-.263-.447-1.323.098-2.757 0 0 .84-.276 2.75 1.052A9.184 9.184 0 0 1 12 7.024c.82.004 1.646.115 2.417.336 1.909-1.328 2.748-1.052 2.748-1.052.546 1.434.202 2.494.1 2.757.64.718 1.028 1.633 1.028 2.753 0 3.942-2.339 4.806-4.566 5.064.359.317.679.944.679 1.902 0 1.373-.013 2.48-.013 2.817 0 .274.18.596.688.494C19.137 20.644 22 16.798 22 12.267 22 6.6 17.523 2 12 2Z" fill="white" opacity=".95"></path>
             </svg>
-            Repositório
+              Repository
           </a>
 
           <a class="btn" href="https://github.com/Malnati/ops-publisher/releases" target="_blank" rel="noreferrer">
@@ -148,32 +148,32 @@
 
       <div class="hero">
         <div class="card">
-          <h1>Publicação GitOps de arquivos por PR derivada</h1>
+          <h1>GitOps file publishing through derivative PR</h1>
           <p class="lead">
-            Receba um arquivo (Markdown/JSON/CSV/etc), faça commit em uma branch padronizada e crie/reutilize automaticamente uma Pull Request derivada.
-            No final, a Action ainda publica um comentário no timeline da PR fonte usando template.
+            Receive a file (Markdown/JSON/CSV/etc), commit it to a standardized branch, and automatically create/reuse a derivative Pull Request.
+            In the end, the Action also posts a comment on the source PR timeline using a template.
           </p>
 
           <div class="pillrow">
             <span class="pill">branch_convention_prefix</span>
             <span class="pill">attached_file_path</span>
-            <span class="pill">PR derivada</span>
+              <span class="pill">Derivative PR</span>
             <span class="pill">timeline comment</span>
             <span class="pill">templates</span>
           </div>
 
           <div class="grid">
             <div class="card mini">
-              <h3>1) Commit do arquivo</h3>
-              <p>Cria/checkout da branch de publicação e comita o arquivo em <code>attached_file_path</code>.</p>
+              <h3>1) File commit</h3>
+              <p>Create/check out the publication branch and commit the file to <code>attached_file_path</code>.</p>
             </div>
             <div class="card mini">
-              <h3>2) PR derivada</h3>
-              <p>Cria (ou reutiliza) uma PR com <code>base=head</code> da PR fonte e <code>head=branch</code> publicada.</p>
+              <h3>2) Derivative PR</h3>
+              <p>Create (or reuse) a PR with the source PR's <code>base=head</code> and the published <code>head=branch</code>.</p>
             </div>
             <div class="card mini">
               <h3>3) Timeline</h3>
-              <p>Renderiza template e comenta no timeline da PR fonte para linkar a PR derivada e a branch.</p>
+              <p>Render the template and comment on the source PR timeline to link the derivative PR and branch.</p>
             </div>
           </div>
         </div>
@@ -231,39 +231,39 @@ steps:
           <thead>
             <tr>
               <th>Input</th>
-              <th>Obrigatório</th>
-              <th>Padrão</th>
-              <th>Descrição</th>
+              <th>Required</th>
+              <th>Default</th>
+              <th>Description</th>
             </tr>
           </thead>
           <tbody>
-            <tr><td><code>token</code></td><td>Sim</td><td></td><td>Token GitHub (ex.: <code>secrets.GITHUB_TOKEN</code>).</td></tr>
-            <tr><td><code>pr_number</code></td><td>Sim</td><td></td><td>Número da PR fonte (aceita <code>N</code> ou <code>#N</code>).</td></tr>
-            <tr><td><code>attached_file_path</code></td><td>Sim</td><td></td><td>Caminho do arquivo a anexar/commitar no repo.</td></tr>
-            <tr><td><code>branch_convention_prefix</code></td><td>Não</td><td><code>ops/files</code></td><td>Prefixo das branches de publicação.</td></tr>
-            <tr><td><code>pr_title</code></td><td>Não</td><td><code>🛡️ Automated Pull Request</code></td><td>Título da PR derivada.</td></tr>
-            <tr><td><code>pr_template_path</code></td><td>Sim</td><td></td><td>Template do corpo da PR derivada.</td></tr>
-            <tr><td><code>timeline_template_path</code></td><td>Sim</td><td></td><td>Template do comentário no timeline da PR fonte.</td></tr>
-            <tr><td><code>bot_name</code></td><td>Não</td><td><code>git-pr-ops-bot</code></td><td>Nome do autor do commit.</td></tr>
-            <tr><td><code>bot_email</code></td><td>Não</td><td><code>git-pr-ops@users.noreply.github.com</code></td><td>Email do autor do commit.</td></tr>
-            <tr><td><code>errors</code></td><td>Não</td><td><code>.github/workflows/errors.log</code></td><td>Arquivo para centralizar logs de erro via <code>ops-errors</code>.</td></tr>
+            <tr><td><code>token</code></td><td>Yes</td><td></td><td>GitHub token (e.g., <code>secrets.GITHUB_TOKEN</code>).</td></tr>
+            <tr><td><code>pr_number</code></td><td>Yes</td><td></td><td>Source PR number (accepts <code>N</code> or <code>#N</code>).</td></tr>
+            <tr><td><code>attached_file_path</code></td><td>Yes</td><td></td><td>Path to the file to attach/commit in the repo.</td></tr>
+            <tr><td><code>branch_convention_prefix</code></td><td>No</td><td><code>ops/files</code></td><td>Prefix for publication branches.</td></tr>
+            <tr><td><code>pr_title</code></td><td>No</td><td><code>🛡️ Automated Pull Request</code></td><td>Title of the derivative PR.</td></tr>
+            <tr><td><code>pr_template_path</code></td><td>Yes</td><td></td><td>Template for the derivative PR body.</td></tr>
+            <tr><td><code>timeline_template_path</code></td><td>Yes</td><td></td><td>Template for the source PR timeline comment.</td></tr>
+            <tr><td><code>bot_name</code></td><td>No</td><td><code>git-pr-ops-bot</code></td><td>Name of the commit author.</td></tr>
+            <tr><td><code>bot_email</code></td><td>No</td><td><code>git-pr-ops@users.noreply.github.com</code></td><td>Email of the commit author.</td></tr>
+            <tr><td><code>errors</code></td><td>No</td><td><code>.github/workflows/errors.log</code></td><td>File to centralize error logs via <code>ops-errors</code>.</td></tr>
           </tbody>
         </table>
       </div>
 
       <div class="card section">
-        <h2>Exemplo de template de timeline</h2>
-        <pre><code>A nova branch do arquivo `${ATTACHED_FILE_PATH}` é `${BRANCH_CONVENTION}` e a Pull Request derivada é ${PR_URL}.
+        <h2>Example timeline template</h2>
+        <pre><code>The new branch for the `${ATTACHED_FILE_PATH}` file is `${BRANCH_CONVENTION}` and the derivative Pull Request is ${PR_URL}.
 
 ---
 &lt;div align="right"&gt;
-  &lt;sub&gt;Processado por &lt;b&gt;Ops Publisher&lt;/b&gt;&lt;/sub&gt;
+  &lt;sub&gt;Processed by &lt;b&gt;Ops Publisher&lt;/b&gt;&lt;/sub&gt;
 &lt;/div&gt;</code></pre>
       </div>
 
       <div class="footer">
         <small>© Ops Publisher</small>
-        <small class="muted">Feito para publicar artefatos por PR com governança e rastreabilidade.</small>
+        <small class="muted">Made to publish artifacts via PR with governance and traceability.</small>
       </div>
     </div>
   </body>
