@@ -43,6 +43,11 @@ inputs:
 runs:
   using: "composite"
   steps:
+    - name: "🧰 Setup error logging"
+      uses: Malnati/ops-errors@v1.0.0
+      with:
+        errors: ${{ inputs.errors }}
+
     - id: step_validate_inputs
       name: "🔧 Setup & Input Validation"
       shell: bash
@@ -59,11 +64,6 @@ runs:
         ERRORS_PATH: ${{ inputs.errors }}
       run: |
         echo "::group::🔧 Setup & Input Validation"
-
-        if [ -n "${ERRORS_PATH:-}" ]; then
-          mkdir -p "$(dirname "$ERRORS_PATH")"
-          touch "$ERRORS_PATH" || true
-        fi
 
         if [ -z "$TOKEN" ]; then
           echo "❌ [token] Obrigatório e não informado. Sem este token a Action não consegue chamar a API do GitHub (gh CLI, criação/edição de PR e comentários)."
@@ -119,12 +119,9 @@ runs:
 
         if [ -z "$ERRORS_PATH" ]; then
           echo "ℹ️ [errors] Não informado."
-          echo "   ➜ Defina 'errors' com o caminho de um arquivo de log customizado para personalizar as saidas de erros deste workflow."
-        elif [ ! -f "$ERRORS_PATH" ]; then
-          echo "ℹ️ [errors] Arquivo '$ERRORS_PATH' não encontrado."
-          echo "   ➜ Um arquivo vazio será criado para esta Action e nele serão adicionados os erros, caso ocorram."
+          echo "   ➜ Defina 'errors' com o caminho de um arquivo de log customizado para centralizar as saídas de erro deste workflow."
         else
-          echo "✅ [timeline_template_path] Encontrado em '$TIMELINE_TEMPLATE_PATH'. Será usado para exibir a mensagem no timeline da Pull Request."
+          echo "✅ [errors] Error logging habilitado em '$ERRORS_PATH'."
         fi
 
         if [ -z "$BRANCH_CONVENTION_PREFIX" ]; then
@@ -162,27 +159,8 @@ runs:
       env:
         GH_TOKEN: ${{ inputs.token }}
         PR_NUMBER: ${{ inputs.pr_number }}
-        ERRORS_PATH: ${{ inputs.errors }}
       run: |
         set -euo pipefail
-
-        if [ -n "${ERRORS_PATH:-}" ]; then
-          mkdir -p "$(dirname "$ERRORS_PATH")"
-          touch "$ERRORS_PATH" || true
-        fi
-
-        append_error_log() {
-          if [ -z "${ERRORS_PATH:-}" ]; then
-            return 0
-          fi
-          local ctx="$1"
-          local f="$2"
-          if [ -s "$f" ]; then
-            printf '\n[%s] %s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$ctx" >> "$ERRORS_PATH" || true
-            cat "$f" >> "$ERRORS_PATH" || true
-            printf '\n' >> "$ERRORS_PATH" || true
-          fi
-        }
 
         if ! gh auth status >/dev/null 2>&1; then
           err="$(mktemp)"
@@ -235,27 +213,8 @@ runs:
       env:
         GH_TOKEN: ${{ inputs.token }}
         SOURCE_BRANCH: ${{ steps.pr_info.outputs.source_branch_name }}
-        ERRORS_PATH: ${{ inputs.errors }}
       run: |
         set -euo pipefail
-
-        if [ -n "${ERRORS_PATH:-}" ]; then
-          mkdir -p "$(dirname "$ERRORS_PATH")"
-          touch "$ERRORS_PATH" || true
-        fi
-
-        append_error_log() {
-          if [ -z "${ERRORS_PATH:-}" ]; then
-            return 0
-          fi
-          local ctx="$1"
-          local f="$2"
-          if [ -s "$f" ]; then
-            printf '\n[%s] %s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$ctx" >> "$ERRORS_PATH" || true
-            cat "$f" >> "$ERRORS_PATH" || true
-            printf '\n' >> "$ERRORS_PATH" || true
-          fi
-        }
 
         if ! gh auth status >/dev/null 2>&1; then
           err="$(mktemp)"
@@ -433,27 +392,8 @@ runs:
         TITLE: ${{ inputs.pr_title }}
         PR_TEMPLATE_PATH: ${{ steps.render_pr.outputs.path }}
         HEAD_PREFIX: ops/files/
-        ERRORS_PATH: ${{ inputs.errors }}
       run: |
         set -euo pipefail
-
-        if [ -n "${ERRORS_PATH:-}" ]; then
-          mkdir -p "$(dirname "$ERRORS_PATH")"
-          touch "$ERRORS_PATH" || true
-        fi
-
-        append_error_log() {
-          if [ -z "${ERRORS_PATH:-}" ]; then
-            return 0
-          fi
-          local ctx="$1"
-          local f="$2"
-          if [ -s "$f" ]; then
-            printf '\n[%s] %s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$ctx" >> "$ERRORS_PATH" || true
-            cat "$f" >> "$ERRORS_PATH" || true
-            printf '\n' >> "$ERRORS_PATH" || true
-          fi
-        }
 
         if ! gh auth status >/dev/null 2>&1; then
           err="$(mktemp)"
