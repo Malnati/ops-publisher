@@ -1,7 +1,7 @@
 <!-- README.md -->
-# ⚙️ Git Report Ops
+# ⚙️ Ops Publisher
 
-[![GitHub Release](https://img.shields.io/github/v/release/Malnati/git-report-ops?style=for-the-badge&color=blue)](https://github.com/Malnati/git-report-ops/releases)
+[![GitHub Release](https://img.shields.io/github/v/release/Malnati/ops-publisher?style=for-the-badge&color=blue)](https://github.com/Malnati/ops-publisher/releases)
 
 **A engine de publicação para suas ferramentas de governança.**
 
@@ -39,7 +39,7 @@ steps:
   # 2. A Engine publica (se necessário)
   - name: Publish
     id: ops
-    uses: Malnati/git-report-ops@v1
+    uses: Malnati/ops-publisher@v1
     with:
       token: ${{ secrets.GITHUB_TOKEN }}
       report_file: "todo_report.md"
