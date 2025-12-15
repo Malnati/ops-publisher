@@ -15,6 +15,10 @@
   <a href="#-templates">Templates</a>
 </p>
 
+<p align="center">
+  <img src="assets/ops-publisher-splash-original.png" alt="Ops Publisher splash with GitOps publishing concept" width="780" />
+</p>
+
 </div>
 
 ---
