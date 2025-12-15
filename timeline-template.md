@@ -7,5 +7,5 @@
 
 ---
 <div align="right">
-  <sub>Processado por <b>Git Report Ops</b></sub>
+  <sub>Processado por <b>Ops Publisher</b></sub>
 </div>

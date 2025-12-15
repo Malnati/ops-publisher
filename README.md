@@ -1,51 +1,164 @@
 <!-- README.md -->
-# ⚙️ Git Report Ops
+<div align="center">
 
-[![GitHub Release](https://img.shields.io/github/v/release/Malnati/git-report-ops?style=for-the-badge&color=blue)](https://github.com/Malnati/git-report-ops/releases)
+# ⚙️ Ops Publisher
 
-**A engine de publicação para suas ferramentas de governança.**
+**Automatize a publicação de artefatos GitOps via Pull Requests Derivadas**
 
-Esta Action abstrai a complexidade de **GitOps** para relatórios de auditoria. Ela recebe um arquivo Markdown gerado por qualquer ferramenta, aplica validações de idempotência (para evitar re-trabalho), gerencia branches dedicadas e cria/atualiza Pull Requests automaticamente.
+[![GitHub Release](https://img.shields.io/github/v/release/Malnati/ops-publisher?style=for-the-badge&color=0052CC&logo=github)](https://github.com/Malnati/ops-publisher/releases)
+[![License](https://img.shields.io/github/license/Malnati/ops-publisher?style=for-the-badge&color=grey)](LICENSE)
 
-## 🚀 Funcionalidades Core
+<p align="center">
+  <a href="#-como-funciona">Como Funciona</a> •
+  <a href="#-uso-rápido">Uso Rápido</a> •
+  <a href="#-configuração">Configuração</a> •
+  <a href="#-templates">Templates</a>
+</p>
 
-1.  **Assinatura de Conteúdo:** Calcula um hash do código-fonte (`ts, js, py...`). Se o código não mudou, o relatório não é republicado.
-2.  **Proteção Anti-Loop:** Detecta automaticamente se o commit foi feito pelo bot ou se está rodando na branch de relatório, interrompendo o ciclo infinito.
-3.  **Gestão de PRs:** Cria branches órfãs ou derivadas (`audit/report/...`) e mantém a PR de relatório sempre atualizada com `git push -f`.
+</div>
 
-## 📦 Inputs
+---
 
-| Input | Obrigatório | Descrição |
-| :--- | :---: | :--- |
-| `token` | Sim | Token com `contents:write` e `pull-requests:write`. |
-| `report_file` | Sim | Caminho do arquivo Markdown a ser publicado. |
-| `scan_extensions` | Não | Extensões consideradas para a assinatura de código. |
-| `report_branch_prefix` | Não | Prefixo da branch (Padrão: `audit/report`). |
+## 🚀 Sobre
 
-## 🛠️ Como usar (Criando sua própria ferramenta)
+O **Ops Publisher** é uma GitHub Action projetada para fluxos de GitOps avançados. Ela captura um arquivo gerado no seu workflow (Markdown, JSON, CSV, etc.), commita em uma branch isolada e gerencia uma **Pull Request derivada** que aponta de volta para a branch da PR original.
 
-Exemplo: Criando um scanner de TODOs que usa esta engine para publicar.
+É a solução ideal para anexar relatórios de CI, planos do Terraform ou artefatos de build diretamente no contexto da PR, sem poluir o histórico principal de imediato.
+
+## 🧠 Como Funciona
+
+A action executa uma lógica de "Sidecar PR":
+
+1.  **Validação:** Verifica inputs e metadados da PR de origem.
+2.  **Branching:** Calcula uma branch única baseada no SHA do commit (`ops/files/<sha-hash>`).
+3.  **Commit:** Envia o arquivo selecionado para esta nova branch.
+4.  **PR Derivada:** Cria (ou atualiza) uma PR que propõe merge da branch de publicação para a branch da PR original.
+5.  **Notificação:** Comenta no timeline da PR original com o link para o artefato gerado.
+
+---
+
+## ✨ Funcionalidades
+
+* ✅ **Gestão Automática de PRs:** Criação e reutilização inteligente de Pull Requests.
+* ✅ **Templating Dinâmico:** Renderiza corpo da PR e comentários usando variáveis de ambiente.
+* ✅ **Rastreabilidade:** Logs de erro centralizados e links diretos no timeline.
+* ✅ **Segurança:** Suporte a tokens personalizados e permissões granulares.
+
+---
+
+## ⚡ Uso Rápido
+
+Adicione este passo ao seu workflow. Certifique-se de configurar as permissões necessárias.
+
+### Pré-requisitos
+```yaml
+permissions:
+  contents: write
+  pull-requests: write
+````
+
+### Exemplo de Workflow
+
+Este exemplo gera um relatório e o publica sempre que um comentário é feito na PR.
 
 ```yaml
-steps:
-  - uses: actions/checkout@v4
-    with: { fetch-depth: 0 }
+name: "Publish Report"
+on:
+  issue_comment:
+    types: [created]
 
-  # 1. Sua Ferramenta gera o relatório
-  - name: Generate TODO Report
-    run: |
-      grep -r "TODO" . > todo_report.md
+jobs:
+  publish:
+    if: github.event.issue.pull_request != null
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Essencial para cálculo de git history
 
-  # 2. A Engine publica (se necessário)
-  - name: Publish
-    id: ops
-    uses: Malnati/git-report-ops@v1
-    with:
-      token: ${{ secrets.GITHUB_TOKEN }}
-      report_file: "todo_report.md"
-      pr_title: "📝 TODOs Audit"
-      
-  # 3. Você usa o output
-  - name: Notify
-    if: steps.ops.outputs.status == 'PUBLISHED'
-    run: echo "Relatório novo em: ${{ steps.ops.outputs.pr_url }}"
+      - name: 📝 Gerar Relatório
+        run: |
+          mkdir -p .reports
+          echo "# Relatório de Execução" > .reports/report.md
+          date >> .reports/report.md
+
+      - name: ⚙️ Ops Publisher
+        uses: Malnati/ops-publisher@v3.0.0
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          pr_number: ${{ github.event.issue.number }}
+          attached_file_path: .reports/report.md
+          pr_template_path: .github/templates/report-pr.md
+          timeline_template_path: .github/templates/report-timeline.md
+          # Opcionais
+          pr_title: "📋 Relatório Automatizado"
+          branch_convention_prefix: ops/reports
+          bot_name: ops-bot
+          bot_email: bot@company.com
+```
+
+-----
+
+## 📦 Configuração (Inputs)
+
+| Input | Obrigatório | Padrão | Descrição |
+| :--- | :---: | :--- | :--- |
+| `token` | **Sim** | - | Token GitHub (ex.: `secrets.GITHUB_TOKEN`). |
+| `pr_number` | **Sim** | - | Número da PR fonte (aceita `N` ou `#N`). |
+| `attached_file_path` | **Sim** | - | Caminho do arquivo a ser publicado. |
+| `pr_template_path` | **Sim** | - | Caminho do template Markdown para o corpo da PR derivada. |
+| `timeline_template_path` | **Sim** | - | Caminho do template Markdown para o comentário na PR original. |
+| `branch_convention_prefix` | Não | `ops/files` | Prefixo para organização das branches. |
+| `pr_title` | Não | `🛡️ Automated PR` | Título da PR derivada. |
+| `bot_name` | Não | `git-pr-ops-bot` | Nome do autor do commit git. |
+| `bot_email` | Não | `...` | Email do autor do commit git. |
+| `errors` | Não | `.github/...` | Arquivo para centralizar logs de erro. |
+
+-----
+
+## 🎨 Personalizando Templates
+
+A Action utiliza o **Malnati/templateer** para renderizar variáveis nos seus arquivos Markdown.
+
+### Variáveis Disponíveis
+
+| Variável | Descrição | Disponível em |
+| :--- | :--- | :--- |
+| `${ATTACHED_FILE_PATH}` | Nome/Caminho do arquivo | Ambos |
+| `${PR_NUMBER}` | Número da PR original | Ambos |
+| `${BRANCH_CONVENTION}` | Nome da branch gerada | Ambos |
+| `${PR_URL}` | URL da PR derivada | **Timeline** apenas |
+
+### Exemplos
+
+#### `.github/templates/report-pr.md` (Corpo da PR)
+
+```markdown
+# 📎 Arquivo Publicado
+Este Pull Request contém a atualização automática do arquivo:
+- **Arquivo:** `${ATTACHED_FILE_PATH}`
+- **Origem:** PR #${PR_NUMBER}
+
+> *Gerado automaticamente por Ops Publisher*
+```
+
+#### `.github/templates/report-timeline.md` (Comentário)
+
+```markdown
+✅ **Relatório Gerado com Sucesso!**
+
+Uma nova versão do arquivo `${ATTACHED_FILE_PATH}` está disponível para revisão.
+🔗 **Ver Pull Request Derivada:** ${PR_URL}
+```
+
+-----
+
+## ⚠️ Notas Importantes
+
+1.  **Dados Sensíveis:** O arquivo em `attached_file_path` é commitado **como está**. Não utilize para segredos ou chaves privadas.
+2.  **Cadeia de PRs:** A PR derivada tenta integrar a branch `ops/...` de volta na branch da PR de origem.
+3.  **Fetch Depth:** Sempre use `fetch-depth: 0` no checkout para garantir que a action consiga calcular corretamente a árvore do git.
+
+-----
+
+<div align="right"> <sub>Mantido por <a href="https://github.com/Malnati">Malnati</a></sub> </div>

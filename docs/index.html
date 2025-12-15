@@ -1,0 +1,270 @@
+<!-- docs/index.html -->
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Ops Publisher — GitHub Actions</title>
+    <meta name="description" content="Publicador GitOps de arquivos via branch dedicada + Pull Request derivada + comentário no timeline." />
+    <meta property="og:title" content="Ops Publisher" />
+    <meta property="og:description" content="Publicador GitOps de arquivos via branch dedicada + Pull Request derivada + comentário no timeline." />
+    <meta property="og:type" content="website" />
+    <meta name="theme-color" content="#0b1220" />
+    <style>
+      :root { color-scheme: dark; }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+        background:
+          radial-gradient(900px 500px at 10% 0%, rgba(96,165,250,.20), transparent 60%),
+          radial-gradient(800px 500px at 90% 10%, rgba(167,139,250,.18), transparent 55%),
+          linear-gradient(180deg, #070b13 0%, #0b1220 30%, #070b13 100%);
+        color: #e5e7eb;
+      }
+      a { color: inherit; text-decoration: none; }
+      .wrap { max-width: 1100px; margin: 0 auto; padding: 28px 18px 64px; }
+      .topbar { display: flex; align-items: center; justify-content: space-between; gap: 14px; }
+      .brand { display: flex; align-items: center; gap: 12px; }
+      .logo {
+        width: 42px; height: 42px; border-radius: 12px;
+        background: linear-gradient(135deg, rgba(96,165,250,.95), rgba(167,139,250,.95));
+        box-shadow: 0 10px 30px rgba(0,0,0,.35);
+        display: grid; place-items: center;
+      }
+      .logo svg { width: 22px; height: 22px; }
+      .titleblock { line-height: 1.15; }
+      .titleblock b { display: block; font-size: 14px; opacity: .9; letter-spacing: .2px; }
+      .titleblock span { display: block; font-size: 12px; opacity: .7; }
+      .btns { display: flex; flex-wrap: wrap; gap: 10px; justify-content: flex-end; }
+      .btn {
+        display: inline-flex; align-items: center; gap: 10px;
+        padding: 10px 12px;
+        border: 1px solid rgba(255,255,255,.10);
+        border-radius: 12px;
+        background: rgba(255,255,255,.06);
+        box-shadow: 0 10px 30px rgba(0,0,0,.20);
+        font-size: 13px;
+      }
+      .btn:hover { border-color: rgba(255,255,255,.18); background: rgba(255,255,255,.08); }
+      .btn.primary { background: linear-gradient(135deg, rgba(96,165,250,.25), rgba(167,139,250,.25)); border-color: rgba(167,139,250,.35); }
+      .btn svg { width: 16px; height: 16px; opacity: .95; }
+      .hero { margin-top: 34px; display: grid; grid-template-columns: 1.2fr .8fr; gap: 18px; align-items: stretch; }
+      .card {
+        border: 1px solid rgba(255,255,255,.10);
+        background: rgba(255,255,255,.04);
+        border-radius: 18px;
+        padding: 18px;
+        box-shadow: 0 20px 50px rgba(0,0,0,.28);
+      }
+      h1 { margin: 0 0 10px; font-size: 34px; letter-spacing: -.5px; }
+      .lead { margin: 0; font-size: 14.5px; line-height: 1.6; opacity: .9; }
+      .pillrow { margin-top: 14px; display: flex; flex-wrap: wrap; gap: 8px; }
+      .pill {
+        font-size: 12px;
+        padding: 6px 10px;
+        border-radius: 999px;
+        border: 1px solid rgba(255,255,255,.10);
+        background: rgba(255,255,255,.05);
+        opacity: .95;
+      }
+      .grid { margin-top: 18px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+      .mini h3 { margin: 0 0 8px; font-size: 13.5px; }
+      .mini p { margin: 0; font-size: 12.5px; line-height: 1.55; opacity: .85; }
+      .section { margin-top: 18px; }
+      .section h2 { margin: 0 0 10px; font-size: 16px; letter-spacing: -.2px; }
+      .kpi { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 12px; }
+      .kpi .mini { padding: 14px; border-radius: 16px; border: 1px solid rgba(255,255,255,.10); background: rgba(255,255,255,.03); }
+      pre {
+        margin: 0;
+        padding: 12px 12px;
+        border-radius: 14px;
+        border: 1px solid rgba(255,255,255,.10);
+        background: rgba(0,0,0,.30);
+        overflow: auto;
+        font-size: 12px;
+        line-height: 1.55;
+      }
+      code { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
+      table { width: 100%; border-collapse: separate; border-spacing: 0; overflow: hidden; border-radius: 14px; border: 1px solid rgba(255,255,255,.10); }
+      th, td { padding: 10px 10px; font-size: 12.5px; border-bottom: 1px solid rgba(255,255,255,.08); vertical-align: top; }
+      th { text-align: left; background: rgba(255,255,255,.05); font-weight: 600; }
+      tr:last-child td { border-bottom: none; }
+      .muted { opacity: .75; }
+      .footer { margin-top: 22px; padding-top: 16px; border-top: 1px solid rgba(255,255,255,.10); display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+      .footer small { opacity: .7; }
+      @media (max-width: 920px) {
+        .hero { grid-template-columns: 1fr; }
+        .grid { grid-template-columns: 1fr; }
+        .kpi { grid-template-columns: 1fr; }
+        h1 { font-size: 30px; }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="topbar">
+        <div class="brand">
+          <div class="logo" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none">
+              <path d="M8 12l3 3 5-7" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+              <path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z" stroke="rgba(255,255,255,.8)" stroke-width="1.4"></path>
+            </svg>
+          </div>
+          <div class="titleblock">
+            <b>Ops Publisher</b>
+            <span>GitHub Action · File publisher via PR derivada</span>
+          </div>
+        </div>
+
+        <div class="btns">
+          <a class="btn primary" href="https://github.com/Malnati/ops-publisher" target="_blank" rel="noreferrer">
+            <svg viewBox="0 0 24 24" fill="none">
+              <path d="M12 2C6.477 2 2 6.6 2 12.267c0 4.533 2.865 8.38 6.839 9.737.5.096.682-.223.682-.495 0-.245-.009-.894-.014-1.755-2.782.62-3.369-1.375-3.369-1.375-.454-1.183-1.11-1.498-1.11-1.498-.907-.64.069-.627.069-.627 1.003.073 1.53 1.055 1.53 1.055.892 1.566 2.341 1.114 2.91.852.091-.667.349-1.114.635-1.37-2.22-.263-4.555-1.14-4.555-5.072 0-1.12.39-2.035 1.03-2.753-.103-.263-.447-1.323.098-2.757 0 0 .84-.276 2.75 1.052A9.184 9.184 0 0 1 12 7.024c.82.004 1.646.115 2.417.336 1.909-1.328 2.748-1.052 2.748-1.052.546 1.434.202 2.494.1 2.757.64.718 1.028 1.633 1.028 2.753 0 3.942-2.339 4.806-4.566 5.064.359.317.679.944.679 1.902 0 1.373-.013 2.48-.013 2.817 0 .274.18.596.688.494C19.137 20.644 22 16.798 22 12.267 22 6.6 17.523 2 12 2Z" fill="white" opacity=".95"></path>
+            </svg>
+            Repositório
+          </a>
+
+          <a class="btn" href="https://github.com/Malnati/ops-publisher/releases" target="_blank" rel="noreferrer">
+            <svg viewBox="0 0 24 24" fill="none">
+              <path d="M12 3v10" stroke="white" stroke-width="2" stroke-linecap="round"></path>
+              <path d="M8 9l4 4 4-4" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+              <path d="M4 17h16" stroke="white" stroke-width="2" stroke-linecap="round"></path>
+            </svg>
+            Releases
+          </a>
+
+          <a class="btn" href="https://github.com/marketplace/actions/ops-publisher" target="_blank" rel="noreferrer">
+            <svg viewBox="0 0 24 24" fill="none">
+              <path d="M4 7h16" stroke="white" stroke-width="2" stroke-linecap="round"></path>
+              <path d="M6 7V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v2" stroke="white" stroke-width="2" stroke-linecap="round"></path>
+              <path d="M6 7l-1 14h14l-1-14" stroke="white" stroke-width="2" stroke-linejoin="round"></path>
+              <path d="M9 11v6M15 11v6" stroke="white" stroke-width="2" stroke-linecap="round"></path>
+            </svg>
+            Marketplace
+          </a>
+        </div>
+      </div>
+
+      <div class="hero">
+        <div class="card">
+          <h1>Publicação GitOps de arquivos por PR derivada</h1>
+          <p class="lead">
+            Receba um arquivo (Markdown/JSON/CSV/etc), faça commit em uma branch padronizada e crie/reutilize automaticamente uma Pull Request derivada.
+            No final, a Action ainda publica um comentário no timeline da PR fonte usando template.
+          </p>
+
+          <div class="pillrow">
+            <span class="pill">branch_convention_prefix</span>
+            <span class="pill">attached_file_path</span>
+            <span class="pill">PR derivada</span>
+            <span class="pill">timeline comment</span>
+            <span class="pill">templates</span>
+          </div>
+
+          <div class="grid">
+            <div class="card mini">
+              <h3>1) Commit do arquivo</h3>
+              <p>Cria/checkout da branch de publicação e comita o arquivo em <code>attached_file_path</code>.</p>
+            </div>
+            <div class="card mini">
+              <h3>2) PR derivada</h3>
+              <p>Cria (ou reutiliza) uma PR com <code>base=head</code> da PR fonte e <code>head=branch</code> publicada.</p>
+            </div>
+            <div class="card mini">
+              <h3>3) Timeline</h3>
+              <p>Renderiza template e comenta no timeline da PR fonte para linkar a PR derivada e a branch.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="section">
+            <h2>Quickstart</h2>
+            <pre><code>permissions:
+  contents: write
+  pull-requests: write
+
+steps:
+  - uses: actions/checkout@v4
+    with:
+      fetch-depth: 0
+
+  - name: Generate report
+    shell: bash
+    run: |
+      mkdir -p .reports
+      printf '%s\n' "hello report" &gt; .reports/report.md
+
+  - name: Publish
+    uses: Malnati/ops-publisher@v3.0.0
+    with:
+      token: ${{ secrets.GITHUB_TOKEN }}
+      pr_number: ${{ github.event.issue.number }}
+      attached_file_path: .reports/report.md
+      pr_title: "📋 Report"
+      branch_convention_prefix: ops/files
+      pr_template_path: .github/templates/report-pr.md
+      timeline_template_path: .github/templates/report-timeline.md
+      errors: .errors/ops-publisher.log</code></pre>
+          </div>
+
+          <div class="section">
+            <h2>Templates</h2>
+            <div class="kpi">
+              <div class="mini">
+                <h3>PR body</h3>
+                <p class="muted"><code>ATTACHED_FILE_PATH</code>, <code>PR_NUMBER</code>, <code>BRANCH_CONVENTION</code></p>
+              </div>
+              <div class="mini">
+                <h3>Timeline</h3>
+                <p class="muted"><code>ATTACHED_FILE_PATH</code>, <code>PR_NUMBER</code>, <code>BRANCH_CONVENTION</code>, <code>PR_URL</code></p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card section">
+        <h2>Inputs (v3.0.0)</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Input</th>
+              <th>Obrigatório</th>
+              <th>Padrão</th>
+              <th>Descrição</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td><code>token</code></td><td>Sim</td><td></td><td>Token GitHub (ex.: <code>secrets.GITHUB_TOKEN</code>).</td></tr>
+            <tr><td><code>pr_number</code></td><td>Sim</td><td></td><td>Número da PR fonte (aceita <code>N</code> ou <code>#N</code>).</td></tr>
+            <tr><td><code>attached_file_path</code></td><td>Sim</td><td></td><td>Caminho do arquivo a anexar/commitar no repo.</td></tr>
+            <tr><td><code>branch_convention_prefix</code></td><td>Não</td><td><code>ops/files</code></td><td>Prefixo das branches de publicação.</td></tr>
+            <tr><td><code>pr_title</code></td><td>Não</td><td><code>🛡️ Automated Pull Request</code></td><td>Título da PR derivada.</td></tr>
+            <tr><td><code>pr_template_path</code></td><td>Sim</td><td></td><td>Template do corpo da PR derivada.</td></tr>
+            <tr><td><code>timeline_template_path</code></td><td>Sim</td><td></td><td>Template do comentário no timeline da PR fonte.</td></tr>
+            <tr><td><code>bot_name</code></td><td>Não</td><td><code>git-pr-ops-bot</code></td><td>Nome do autor do commit.</td></tr>
+            <tr><td><code>bot_email</code></td><td>Não</td><td><code>git-pr-ops@users.noreply.github.com</code></td><td>Email do autor do commit.</td></tr>
+            <tr><td><code>errors</code></td><td>Não</td><td><code>.github/workflows/errors.log</code></td><td>Arquivo para centralizar logs de erro via <code>ops-errors</code>.</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="card section">
+        <h2>Exemplo de template de timeline</h2>
+        <pre><code>A nova branch do arquivo `${ATTACHED_FILE_PATH}` é `${BRANCH_CONVENTION}` e a Pull Request derivada é ${PR_URL}.
+
+---
+&lt;div align="right"&gt;
+  &lt;sub&gt;Processado por &lt;b&gt;Ops Publisher&lt;/b&gt;&lt;/sub&gt;
+&lt;/div&gt;</code></pre>
+      </div>
+
+      <div class="footer">
+        <small>© Ops Publisher</small>
+        <small class="muted">Feito para publicar artefatos por PR com governança e rastreabilidade.</small>
+      </div>
+    </div>
+  </body>
+</html>
