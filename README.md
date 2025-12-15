@@ -1,93 +1,72 @@
 <!-- README.md -->
+<div align="center">
+
 # ⚙️ Ops Publisher
 
-[![GitHub Release](https://img.shields.io/github/v/release/Malnati/ops-publisher?style=for-the-badge&color=blue)](https://github.com/Malnati/ops-publisher/releases)
+**Automatize a publicação de artefatos GitOps via Pull Requests Derivadas**
 
-**Publicador GitOps de arquivos via branch dedicada + Pull Request derivada + comentário no timeline.**
+[![GitHub Release](https://img.shields.io/github/v/release/Malnati/ops-publisher?style=for-the-badge&color=0052CC&logo=github)](https://github.com/Malnati/ops-publisher/releases)
+[![License](https://img.shields.io/github/license/Malnati/ops-publisher?style=for-the-badge&color=grey)](LICENSE)
+[![Actions Status](https://img.shields.io/github/actions/workflow/status/Malnati/ops-publisher/ci.yml?style=for-the-badge&label=Build)](https://actions)
 
-O **Ops Publisher** recebe um arquivo do repositório (Markdown/JSON/CSV/etc), comita esse arquivo em uma branch padronizada e cria (ou reutiliza) uma **Pull Request derivada** apontando para a **branch de origem** da PR informada. Em seguida, publica uma mensagem no timeline dessa PR usando template.
+<p align="center">
+  <a href="#-como-funciona">Como Funciona</a> •
+  <a href="#-uso-rápido">Uso Rápido</a> •
+  <a href="#-configuração">Configuração</a> •
+  <a href="#-templates">Templates</a>
+</p>
 
----
-
-## ✅ O que esta Action faz
-
-- Valida inputs obrigatórios (`token`, `pr_number`, `attached_file_path`, `pr_template_path`, `timeline_template_path`)
-- Lê metadados da PR fonte (`head`, `base`, SHAs, URL, título) via `gh`
-- Calcula uma branch de publicação no padrão:  
-  `branch_convention_prefix/<ultimos-10-do-sha-do-HEAD>`
-- Faz commit do arquivo em `attached_file_path` nessa branch e `push`
-- Cria (ou reaproveita) uma PR derivada com:
-  - `base = headRefName` da PR fonte
-  - `head = branch_convention` (branch de publicação)
-- Renderiza:
-  - corpo da PR via `templateer` (template do PR)
-  - comentário do timeline via `templateer` (template do timeline)
-- Publica o comentário no timeline via `pr-comment`
-- Centraliza logs de erro no arquivo configurado via `errors` (via `ops-errors`)
+</div>
 
 ---
 
-## 🔐 Permissions necessárias
+## 🚀 Sobre
 
-No workflow que chama esta Action:
+O **Ops Publisher** é uma GitHub Action projetada para fluxos de GitOps avançados. Ela captura um arquivo gerado no seu workflow (Markdown, JSON, CSV, etc.), commita em uma branch isolada e gerencia uma **Pull Request derivada** que aponta de volta para a branch da PR original.
 
+É a solução ideal para anexar relatórios de CI, planos do Terraform ou artefatos de build diretamente no contexto da PR, sem poluir o histórico principal de imediato.
+
+## 🧠 Como Funciona
+
+A action executa uma lógica de "Sidecar PR":
+
+1.  **Validação:** Verifica inputs e metadados da PR de origem.
+2.  **Branching:** Calcula uma branch única baseada no SHA do commit (`ops/files/<sha-hash>`).
+3.  **Commit:** Envia o arquivo selecionado para esta nova branch.
+4.  **PR Derivada:** Cria (ou atualiza) uma PR que propõe merge da branch de publicação para a branch da PR original.
+5.  **Notificação:** Comenta no timeline da PR original com o link para o artefato gerado.
+
+---
+
+## ✨ Funcionalidades
+
+* ✅ **Gestão Automática de PRs:** Criação e reutilização inteligente de Pull Requests.
+* ✅ **Templating Dinâmico:** Renderiza corpo da PR e comentários usando variáveis de ambiente.
+* ✅ **Rastreabilidade:** Logs de erro centralizados e links diretos no timeline.
+* ✅ **Segurança:** Suporte a tokens personalizados e permissões granulares.
+
+---
+
+## ⚡ Uso Rápido
+
+Adicione este passo ao seu workflow. Certifique-se de configurar as permissões necessárias.
+
+### Pré-requisitos
 ```yaml
 permissions:
   contents: write
   pull-requests: write
-```
+````
 
----
+### Exemplo de Workflow
 
-## 📦 Inputs (v3.0.0)
-
-| Input | Obrigatório | Padrão | Descrição |
-|---|:---:|---|---|
-| `token` | Sim |  | Token GitHub (ex.: `secrets.GITHUB_TOKEN`) |
-| `pr_number` | Sim |  | Número da PR fonte (aceita `N` ou `#N`) |
-| `attached_file_path` | Sim |  | Caminho do arquivo a anexar/commitar no repo (ex.: `.reports/report.md`) |
-| `branch_convention_prefix` | Não | `ops/files` | Prefixo para branches de publicação |
-| `pr_title` | Não | `🛡️ Automated Pull Request` | Título da PR derivada |
-| `pr_template_path` | Sim |  | Caminho do template do corpo da PR |
-| `timeline_template_path` | Sim |  | Caminho do template do comentário no timeline |
-| `bot_name` | Não | `git-pr-ops-bot` | Nome do autor do commit |
-| `bot_email` | Não | `git-pr-ops@users.noreply.github.com` | Email do autor do commit |
-| `errors` | Não | `.github/workflows/errors.log` | Arquivo para centralizar logs de erro |
-
----
-
-## 🧩 Variáveis disponíveis nos templates
-
-A Action renderiza templates via **Malnati/templateer** com variáveis de ambiente.
-
-### Template do corpo da PR (`pr_template_path`)
-Disponíveis:
-- `ATTACHED_FILE_PATH` (basename do arquivo)
-- `PR_NUMBER`
-- `BRANCH_CONVENTION`
-
-### Template do timeline (`timeline_template_path`)
-Disponíveis:
-- `ATTACHED_FILE_PATH` (basename do arquivo)
-- `PR_NUMBER`
-- `BRANCH_CONVENTION`
-- `PR_URL` (URL da PR derivada criada/reutilizada)
-
----
-
-## 🛠️ Exemplo de uso
-
-Exemplo de workflow acionado por comentário em PR, gerando um arquivo e publicando via Ops Publisher:
+Este exemplo gera um relatório e o publica sempre que um comentário é feito na PR.
 
 ```yaml
-name: "Publish report"
+name: "Publish Report"
 on:
   issue_comment:
     types: [created]
-
-permissions:
-  contents: write
-  pull-requests: write
 
 jobs:
   publish:
@@ -96,64 +75,93 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0
+          fetch-depth: 0 # Essencial para cálculo de git history
 
-      - name: Generate report
-        shell: bash
+      - name: 📝 Gerar Relatório
         run: |
           mkdir -p .reports
-          printf '%s
-' "hello report" > .reports/report.md
+          echo "# Relatório de Execução" > .reports/report.md
+          date >> .reports/report.md
 
-      - name: Publish
+      - name: ⚙️ Ops Publisher
         uses: Malnati/ops-publisher@v3.0.0
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           pr_number: ${{ github.event.issue.number }}
           attached_file_path: .reports/report.md
-          pr_title: "📋 Report"
-          branch_convention_prefix: ops/files
           pr_template_path: .github/templates/report-pr.md
           timeline_template_path: .github/templates/report-timeline.md
-          bot_name: mbra-com-br
-          bot_email: accounts@mbra.com.br
-          errors: .errors/ops-publisher.log
+          # Opcionais
+          pr_title: "📋 Relatório Automatizado"
+          branch_convention_prefix: ops/reports
+          bot_name: ops-bot
+          bot_email: bot@company.com
 ```
 
----
+-----
 
-## 🧾 Exemplos de templates
+## 📦 Configuração (Inputs)
 
-### `.github/templates/report-pr.md`
+| Input | Obrigatório | Padrão | Descrição |
+| :--- | :---: | :--- | :--- |
+| `token` | **Sim** | - | Token GitHub (ex.: `secrets.GITHUB_TOKEN`). |
+| `pr_number` | **Sim** | - | Número da PR fonte (aceita `N` ou `#N`). |
+| `attached_file_path` | **Sim** | - | Caminho do arquivo a ser publicado. |
+| `pr_template_path` | **Sim** | - | Caminho do template Markdown para o corpo da PR derivada. |
+| `timeline_template_path` | **Sim** | - | Caminho do template Markdown para o comentário na PR original. |
+| `branch_convention_prefix` | Não | `ops/files` | Prefixo para organização das branches. |
+| `pr_title` | Não | `🛡️ Automated PR` | Título da PR derivada. |
+| `bot_name` | Não | `git-pr-ops-bot` | Nome do autor do commit git. |
+| `bot_email` | Não | `...` | Email do autor do commit git. |
+| `errors` | Não | `.github/...` | Arquivo para centralizar logs de erro. |
 
-```md
-# 📎 Published file
+-----
 
-- File: `${ATTACHED_FILE_PATH}`
-- Source PR: `#${PR_NUMBER}`
-- Branch: `${BRANCH_CONVENTION}`
+## 🎨 Personalizando Templates
 
-> This PR is generated automatically by **Ops Publisher**.
+A Action utiliza o **Malnati/templateer** para renderizar variáveis nos seus arquivos Markdown.
+
+### Variáveis Disponíveis
+
+| Variável | Descrição | Disponível em |
+| :--- | :--- | :--- |
+| `${ATTACHED_FILE_PATH}` | Nome/Caminho do arquivo | Ambos |
+| `${PR_NUMBER}` | Número da PR original | Ambos |
+| `${BRANCH_CONVENTION}` | Nome da branch gerada | Ambos |
+| `${PR_URL}` | URL da PR derivada | **Timeline** apenas |
+
+### Exemplos
+
+#### `.github/templates/report-pr.md` (Corpo da PR)
+
+```markdown
+# 📎 Arquivo Publicado
+Este Pull Request contém a atualização automática do arquivo:
+- **Arquivo:** `${ATTACHED_FILE_PATH}`
+- **Origem:** PR #${PR_NUMBER}
+
+> *Gerado automaticamente por Ops Publisher*
 ```
 
-### `.github/templates/report-timeline.md`
+#### `.github/templates/report-timeline.md` (Comentário)
 
-```md
-A nova branch do arquivo `${ATTACHED_FILE_PATH}` é `${BRANCH_CONVENTION}` e a Pull Request derivada é ${PR_URL}.
+```markdown
+✅ **Relatório Gerado com Sucesso!**
 
----
-<div align="right">
-  <sub>Processado por <b>Ops Publisher</b></sub>
-</div>
+Uma nova versão do arquivo `${ATTACHED_FILE_PATH}` está disponível para revisão.
+🔗 **Ver Pull Request Derivada:** ${PR_URL}
 ```
 
----
+-----
 
-## ⚠️ Observações importantes
+## ⚠️ Notas Importantes
 
-- O arquivo em `attached_file_path` é commitado **como está** no repositório. Evite anexar dados sensíveis.
-- A PR derivada é criada para integrar a branch `ops/files/...` **na branch de origem** da PR informada (cadeia de PRs).
-- Para evitar branches conflitantes, mantenha `branch_convention_prefix` dedicado (ex.: `ops/files`).
+1.  **Dados Sensíveis:** O arquivo em `attached_file_path` é commitado **como está**. Não utilize para segredos ou chaves privadas.
+2.  **Cadeia de PRs:** A PR derivada tenta integrar a branch `ops/...` de volta na branch da PR de origem.
+3.  **Fetch Depth:** Sempre use `fetch-depth: 0` no checkout para garantir que a action consiga calcular corretamente a árvore do git.
 
-No fim, mantenha os templates em paths versionados no repositório (ex.: `.github/templates/*`) e use `fetch-depth: 0` no checkout para garantir consistência do `git` e do cálculo de branch.
-</readme>
+-----
+
+\<div align="right"\>
+\<sub\>Mantido por \<a href="https://github.com/Malnati"\>Malnati\</a\>\</sub\>
+\</div\>
