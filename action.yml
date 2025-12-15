@@ -39,7 +39,7 @@ inputs:
   errors:
     required: false
     default: ".github/workflows/errors.log"
-    
+
 runs:
   using: "composite"
   steps:
@@ -59,6 +59,11 @@ runs:
         ERRORS_PATH: ${{ inputs.errors }}
       run: |
         echo "::group::🔧 Setup & Input Validation"
+
+        if [ -n "${ERRORS_PATH:-}" ]; then
+          mkdir -p "$(dirname "$ERRORS_PATH")"
+          touch "$ERRORS_PATH" || true
+        fi
 
         if [ -z "$TOKEN" ]; then
           echo "❌ [token] Obrigatório e não informado. Sem este token a Action não consegue chamar a API do GitHub (gh CLI, criação/edição de PR e comentários)."
@@ -157,25 +162,48 @@ runs:
       env:
         GH_TOKEN: ${{ inputs.token }}
         PR_NUMBER: ${{ inputs.pr_number }}
+        ERRORS_PATH: ${{ inputs.errors }}
       run: |
         set -euo pipefail
+
+        if [ -n "${ERRORS_PATH:-}" ]; then
+          mkdir -p "$(dirname "$ERRORS_PATH")"
+          touch "$ERRORS_PATH" || true
+        fi
+
+        append_error_log() {
+          if [ -z "${ERRORS_PATH:-}" ]; then
+            return 0
+          fi
+          local ctx="$1"
+          local f="$2"
+          if [ -s "$f" ]; then
+            printf '\n[%s] %s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$ctx" >> "$ERRORS_PATH" || true
+            cat "$f" >> "$ERRORS_PATH" || true
+            printf '\n' >> "$ERRORS_PATH" || true
+          fi
+        }
 
         if ! gh auth status >/dev/null 2>&1; then
           err="$(mktemp)"
           if ! gh auth login --with-token <<<"$GH_TOKEN" >/dev/null 2>"$err"; then
+            append_error_log "pr_info: gh auth login" "$err"
             cat "$err" >&2
             rm -f "$err"
             exit 1
           fi
+          append_error_log "pr_info: gh auth login (stderr)" "$err"
           rm -f "$err"
         fi
 
         err="$(mktemp)"
         if ! PR_JSON="$(gh pr view "$PR_NUMBER" --json url,title,headRefName,headRefOid,baseRefName,baseRefOid 2>"$err")"; then
+          append_error_log "pr_info: gh pr view" "$err"
           cat "$err" >&2
           rm -f "$err"
           exit 1
         fi
+        append_error_log "pr_info: gh pr view (stderr)" "$err"
         rm -f "$err"
 
         PR_URL=$(echo "$PR_JSON" | jq -r '.url')
@@ -207,16 +235,37 @@ runs:
       env:
         GH_TOKEN: ${{ inputs.token }}
         SOURCE_BRANCH: ${{ steps.pr_info.outputs.source_branch_name }}
+        ERRORS_PATH: ${{ inputs.errors }}
       run: |
         set -euo pipefail
+
+        if [ -n "${ERRORS_PATH:-}" ]; then
+          mkdir -p "$(dirname "$ERRORS_PATH")"
+          touch "$ERRORS_PATH" || true
+        fi
+
+        append_error_log() {
+          if [ -z "${ERRORS_PATH:-}" ]; then
+            return 0
+          fi
+          local ctx="$1"
+          local f="$2"
+          if [ -s "$f" ]; then
+            printf '\n[%s] %s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$ctx" >> "$ERRORS_PATH" || true
+            cat "$f" >> "$ERRORS_PATH" || true
+            printf '\n' >> "$ERRORS_PATH" || true
+          fi
+        }
 
         if ! gh auth status >/dev/null 2>&1; then
           err="$(mktemp)"
           if ! gh auth login --with-token <<<"$GH_TOKEN" >/dev/null 2>"$err"; then
+            append_error_log "derivated_prs_finder: gh auth login" "$err"
             cat "$err" >&2
             rm -f "$err"
             exit 1
           fi
+          append_error_log "derivated_prs_finder: gh auth login (stderr)" "$err"
           rm -f "$err"
         fi
 
@@ -227,10 +276,12 @@ runs:
 
         err="$(mktemp)"
         if ! PR_LIST="$(gh pr list --state open --base "$SOURCE_BRANCH" --json number,url,headRefName,baseRefName 2>"$err")"; then
+          append_error_log "derivated_prs_finder: gh pr list" "$err"
           cat "$err" >&2
           rm -f "$err"
           exit 1
         fi
+        append_error_log "derivated_prs_finder: gh pr list (stderr)" "$err"
         rm -f "$err"
 
         COUNT=$(echo "$PR_LIST" | jq 'length')
@@ -382,25 +433,48 @@ runs:
         TITLE: ${{ inputs.pr_title }}
         PR_TEMPLATE_PATH: ${{ steps.render_pr.outputs.path }}
         HEAD_PREFIX: ops/files/
+        ERRORS_PATH: ${{ inputs.errors }}
       run: |
         set -euo pipefail
+
+        if [ -n "${ERRORS_PATH:-}" ]; then
+          mkdir -p "$(dirname "$ERRORS_PATH")"
+          touch "$ERRORS_PATH" || true
+        fi
+
+        append_error_log() {
+          if [ -z "${ERRORS_PATH:-}" ]; then
+            return 0
+          fi
+          local ctx="$1"
+          local f="$2"
+          if [ -s "$f" ]; then
+            printf '\n[%s] %s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$ctx" >> "$ERRORS_PATH" || true
+            cat "$f" >> "$ERRORS_PATH" || true
+            printf '\n' >> "$ERRORS_PATH" || true
+          fi
+        }
 
         if ! gh auth status >/dev/null 2>&1; then
           err="$(mktemp)"
           if ! gh auth login --with-token <<<"$GH_TOKEN" >/dev/null 2>"$err"; then
+            append_error_log "publish_pr: gh auth login" "$err"
             cat "$err" >&2
             rm -f "$err"
             exit 1
           fi
+          append_error_log "publish_pr: gh auth login (stderr)" "$err"
           rm -f "$err"
         fi
 
         err="$(mktemp)"
         if ! EXISTING_URL="$(gh pr list --state open --base "$BASE_BRANCH" --json url,headRefName --jq '([.[] | select(.headRefName | startswith(env.HEAD_PREFIX))][0].url) // ""' 2>"$err")"; then
+          append_error_log "publish_pr: gh pr list (existing url)" "$err"
           cat "$err" >&2
           rm -f "$err"
           exit 1
         fi
+        append_error_log "publish_pr: gh pr list (existing url) (stderr)" "$err"
         rm -f "$err"
 
         if [ -n "${EXISTING_URL:-}" ]; then
@@ -410,18 +484,22 @@ runs:
         else
           err="$(mktemp)"
           if ! gh pr create --base "$BASE_BRANCH" --head "$HEAD_BRANCH" --title "$TITLE" --body-file "$PR_TEMPLATE_PATH" >/dev/null 2>"$err"; then
+            append_error_log "publish_pr: gh pr create" "$err"
             cat "$err" >&2
             rm -f "$err"
             exit 1
           fi
+          append_error_log "publish_pr: gh pr create (stderr)" "$err"
           rm -f "$err"
 
           err="$(mktemp)"
           if ! PR_URL="$(gh pr view "$HEAD_BRANCH" --json url --jq '.url' 2>"$err")"; then
+            append_error_log "publish_pr: gh pr view (url)" "$err"
             cat "$err" >&2
             rm -f "$err"
             exit 1
           fi
+          append_error_log "publish_pr: gh pr view (url) (stderr)" "$err"
           rm -f "$err"
 
           echo "PR_URL: $PR_URL"
